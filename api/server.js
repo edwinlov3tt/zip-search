@@ -42,7 +42,12 @@ let cities = [];
 // Load CSV data on startup
 async function loadZipCodeData() {
   console.log('Loading zip code data...');
-  const csvPath = path.join(__dirname, '../US/zipcodes.us.csv');
+  // Check if running on Vercel or locally
+  let csvPath = path.join(__dirname, 'zipcodes.us.csv');
+  if (!fs.existsSync(csvPath)) {
+    csvPath = path.join(__dirname, '../US/zipcodes.us.csv');
+  }
+  console.log('CSV path:', csvPath);
 
   return new Promise((resolve, reject) => {
     const results = [];

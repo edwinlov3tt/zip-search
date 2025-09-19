@@ -28,3 +28,4 @@ dist-ssr
 US/
 public/boundaries/*.geojson
 !public/boundaries/us-zip-codes.geojson.placeholder
+.vercel
