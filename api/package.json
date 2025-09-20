@@ -8,9 +8,11 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.57.4",
+    "@vercel/postgres": "^0.10.0",
     "cors": "^2.8.5",
-    "csv-parse": "^5.3.3"
+    "csv-parse": "^5.3.3",
+    "express": "^4.18.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
