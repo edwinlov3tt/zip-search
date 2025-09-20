@@ -1,4 +1,4 @@
-import { StaticZipCodeService } from './staticZipCodeService';
+import { OptimizedStaticService } from './optimizedStaticService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 const USE_STATIC_DATA = true; // Set to true to use static JSON instead of API
@@ -8,7 +8,7 @@ export class ZipCodeService {
   static async search(params) {
     // Use static data if enabled
     if (USE_STATIC_DATA) {
-      return StaticZipCodeService.search(params);
+      return OptimizedStaticService.search(params);
     }
 
     const queryParams = new URLSearchParams();
@@ -34,13 +34,13 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return StaticZipCodeService.search(params);
+      return OptimizedStaticService.search(params);
     }
   }
 
   static async getStates() {
     if (USE_STATIC_DATA) {
-      return StaticZipCodeService.getStates();
+      return OptimizedStaticService.getStates();
     }
 
     try {
@@ -51,13 +51,13 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return StaticZipCodeService.getStates();
+      return OptimizedStaticService.getStates();
     }
   }
 
   static async getCounties(state) {
     if (USE_STATIC_DATA) {
-      return StaticZipCodeService.getCounties({ state });
+      return OptimizedStaticService.getCounties({ state });
     }
 
     const queryParams = new URLSearchParams();
@@ -71,13 +71,13 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return StaticZipCodeService.getCounties({ state });
+      return OptimizedStaticService.getCounties({ state });
     }
   }
 
   static async getCities(state, county) {
     if (USE_STATIC_DATA) {
-      return StaticZipCodeService.getCities({ state, county });
+      return OptimizedStaticService.getCities({ state, county });
     }
 
     const queryParams = new URLSearchParams();
@@ -92,13 +92,13 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return StaticZipCodeService.getCities({ state, county });
+      return OptimizedStaticService.getCities({ state, county });
     }
   }
 
   static async getZipCode(zipCode) {
     if (USE_STATIC_DATA) {
-      return StaticZipCodeService.getZipCode({ zip: zipCode });
+      return OptimizedStaticService.getZipCode({ zip: zipCode });
     }
 
     try {
@@ -109,7 +109,7 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return StaticZipCodeService.getZipCode({ zip: zipCode });
+      return OptimizedStaticService.getZipCode({ zip: zipCode });
     }
   }
 
