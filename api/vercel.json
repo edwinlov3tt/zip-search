@@ -1,26 +1,11 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server-supabase.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+  "functions": {
+    "server-supabase.js": {
+      "maxDuration": 60
     }
-  ],
+  },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/server-supabase.js" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept" }
-      ]
-    }
-  ],
-  "public": true
+    { "source": "/api/(.*)", "destination": "/server-supabase.js" }
+  ]
 }
