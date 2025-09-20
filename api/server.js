@@ -293,24 +293,45 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start server
-async function startServer() {
-  try {
-    await loadZipCodeData();
-    app.listen(PORT, () => {
-      console.log(`🚀 Zip Search API running on http://localhost:${PORT}`);
-      console.log(`📊 Loaded ${zipCodes.length} zip codes`);
-      console.log(`🔍 API endpoints:`);
-      console.log(`   GET /api/search - Search zip codes`);
-      console.log(`   GET /api/states - Get all states`);
-      console.log(`   GET /api/counties - Get counties`);
-      console.log(`   GET /api/cities - Get cities`);
-      console.log(`   GET /api/zipcode/:zip - Get zip details`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+// Initialize data loading promise
+let dataLoadPromise = null;
+
+// Ensure data is loaded (with caching for serverless)
+async function ensureDataLoaded() {
+  if (zipCodes.length > 0) {
+    return; // Data already loaded
   }
+
+  if (!dataLoadPromise) {
+    dataLoadPromise = loadZipCodeData();
+  }
+
+  await dataLoadPromise;
 }
 
-startServer();
+// Middleware to ensure data is loaded before handling requests
+app.use(async (req, res, next) => {
+  try {
+    await ensureDataLoaded();
+    next();
+  } catch (error) {
+    console.error('Failed to load data:', error);
+    res.status(500).json({ error: 'Failed to initialize data' });
+  }
+});
+
+// For local development
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Zip Search API running on http://localhost:${PORT}`);
+    console.log(`🔍 API endpoints:`);
+    console.log(`   GET /api/search - Search zip codes`);
+    console.log(`   GET /api/states - Get all states`);
+    console.log(`   GET /api/counties - Get counties`);
+    console.log(`   GET /api/cities - Get cities`);
+    console.log(`   GET /api/zipcode/:zip - Get zip details`);
+  });
+}
+
+// Export for Vercel
+module.exports = app;
