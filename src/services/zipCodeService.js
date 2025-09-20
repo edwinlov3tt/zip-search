@@ -1,8 +1,16 @@
+import { StaticZipCodeService } from './staticZipCodeService';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const USE_STATIC_DATA = true; // Set to true to use static JSON instead of API
 
 // API service functions for zip code data
 export class ZipCodeService {
   static async search(params) {
+    // Use static data if enabled
+    if (USE_STATIC_DATA) {
+      return StaticZipCodeService.search(params);
+    }
+
     const queryParams = new URLSearchParams();
 
     if (params.query) queryParams.append('query', params.query);
@@ -18,58 +26,109 @@ export class ZipCodeService {
     if (params.limit) queryParams.append('limit', params.limit);
     if (params.offset) queryParams.append('offset', params.offset);
 
-    const response = await fetch(`${API_BASE_URL}/search?${queryParams}`);
-    if (!response.ok) {
-      throw new Error(`Search failed: ${response.statusText}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/search?${queryParams}`);
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.warn('API failed, falling back to static data:', error);
+      return StaticZipCodeService.search(params);
     }
-    return response.json();
   }
 
   static async getStates() {
-    const response = await fetch(`${API_BASE_URL}/states`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch states: ${response.statusText}`);
+    if (USE_STATIC_DATA) {
+      return StaticZipCodeService.getStates();
     }
-    return response.json();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/states`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch states: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.warn('API failed, falling back to static data:', error);
+      return StaticZipCodeService.getStates();
+    }
   }
 
   static async getCounties(state) {
+    if (USE_STATIC_DATA) {
+      return StaticZipCodeService.getCounties({ state });
+    }
+
     const queryParams = new URLSearchParams();
     if (state) queryParams.append('state', state);
 
-    const response = await fetch(`${API_BASE_URL}/counties?${queryParams}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch counties: ${response.statusText}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/counties?${queryParams}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch counties: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.warn('API failed, falling back to static data:', error);
+      return StaticZipCodeService.getCounties({ state });
     }
-    return response.json();
   }
 
   static async getCities(state, county) {
+    if (USE_STATIC_DATA) {
+      return StaticZipCodeService.getCities({ state, county });
+    }
+
     const queryParams = new URLSearchParams();
     if (state) queryParams.append('state', state);
     if (county) queryParams.append('county', county);
 
-    const response = await fetch(`${API_BASE_URL}/cities?${queryParams}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch cities: ${response.statusText}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/cities?${queryParams}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch cities: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.warn('API failed, falling back to static data:', error);
+      return StaticZipCodeService.getCities({ state, county });
     }
-    return response.json();
   }
 
   static async getZipCode(zipCode) {
-    const response = await fetch(`${API_BASE_URL}/zipcode/${zipCode}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch zip code: ${response.statusText}`);
+    if (USE_STATIC_DATA) {
+      return StaticZipCodeService.getZipCode({ zip: zipCode });
     }
-    return response.json();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/zipcode/${zipCode}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch zip code: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.warn('API failed, falling back to static data:', error);
+      return StaticZipCodeService.getZipCode({ zip: zipCode });
+    }
   }
 
   static async health() {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    if (!response.ok) {
-      throw new Error(`Health check failed: ${response.statusText}`);
+    // For static data, always return healthy
+    if (USE_STATIC_DATA) {
+      return { status: 'OK', mode: 'static' };
     }
-    return response.json();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`);
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.statusText}`);
+      }
+      return response.json();
+    } catch (error) {
+      // If API is down, we're still healthy with static data
+      return { status: 'OK', mode: 'static-fallback' };
+    }
   }
 
   // Helper function to geocode a location (simple text search)
@@ -80,7 +139,7 @@ export class ZipCodeService {
       return {
         lat: firstResult.latitude,
         lng: firstResult.longitude,
-        location: `${firstResult.city}, ${firstResult.stateCode}`
+        location: `${firstResult.city}, ${firstResult.stateCode || firstResult.state}`
       };
     }
     throw new Error('Location not found');
