@@ -1,7 +1,7 @@
 import { OptimizedStaticService } from './optimizedStaticService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const USE_STATIC_DATA = true; // Set to true to use static JSON instead of API
+const USE_STATIC_DATA = false; // Now using Supabase database via API
 
 // API service functions for zip code data
 export class ZipCodeService {
