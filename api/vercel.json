@@ -9,15 +9,17 @@
       }
     }
   ],
-  "routes": [
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/server-supabase.js" }
+  ],
+  "headers": [
     {
-      "src": "/(.*)",
-      "dest": "/server-supabase.js",
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Accept"
-      }
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept" }
+      ]
     }
   ],
   "public": true
