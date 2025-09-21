@@ -196,6 +196,9 @@ const GeoApplication = () => {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Map layer selector state
+  const [showMapLayers, setShowMapLayers] = useState(false);
+
   // Selection state for map-drawer synchronization
   const [selectedResult, setSelectedResult] = useState(null); // { type: 'zip', id: 123 }
   const tableContainerRef = useRef(null);
@@ -2506,85 +2509,115 @@ const GeoApplication = () => {
               </>
             ) : searchMode === 'polygon' ? (
               // Polygon Search Controls
-              <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-                <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <div className="flex flex-row items-center gap-2 sm:gap-3">
+                <div className={`flex-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   Draw shapes on the map to search within them
+                  {drawnShapes.length > 0 && (
+                    <span className={`ml-2 text-xs px-2 py-1 rounded inline-block ${
+                      isDarkMode
+                        ? 'bg-red-900/30 text-red-400'
+                        : 'bg-red-50 text-red-600'
+                    }`}>
+                      {drawnShapes.length} shape{drawnShapes.length > 1 ? 's' : ''} drawn
+                    </span>
+                  )}
                 </div>
-                {drawnShapes.length > 0 && (
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    isDarkMode
-                      ? 'bg-red-900/30 text-red-400'
-                      : 'bg-red-50 text-red-600'
-                  }`}>
-                    {drawnShapes.length} shape{drawnShapes.length > 1 ? 's' : ''} drawn
-                  </span>
+                {searchPerformed && (
+                  <button
+                    onClick={handleReset}
+                    disabled={isLoading}
+                    className={`py-2 px-4 sm:px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors whitespace-nowrap ${
+                      isDarkMode
+                        ? 'bg-gray-600 text-white hover:bg-gray-500'
+                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
                 )}
               </div>
             ) : searchMode === 'hierarchy' ? (
               // Hierarchy Search Controls
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-                <select
-                  value={selectedState}
-                  onChange={(e) => {
-                    setSelectedState(e.target.value);
-                    setSelectedCounty(''); // Reset county and city when state changes
-                    setSelectedCity('');
-                  }}
-                  disabled={false}
-                  className={`p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
-                    isDarkMode
-                      ? 'bg-gray-700 text-white border-gray-600'
-                      : 'bg-white text-gray-900 border-gray-300'
-                  }`}
-                >
-                  <option value="">Select State</option>
-                  {availableStates.map(state => (
-                    <option key={state.code} value={state.code}>{state.name} ({state.code})</option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedCounty}
-                  onChange={(e) => {
-                    setSelectedCounty(e.target.value);
-                    setSelectedCity(''); // Reset city when county changes
-                  }}
-                  disabled={!selectedState}
-                  className={`w-40 p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
-                    !selectedState
-                      ? isDarkMode
-                        ? 'bg-gray-800 text-gray-500 border-gray-700'
-                        : 'bg-gray-100 text-gray-500 border-gray-300'
-                      : isDarkMode
+              <div className="flex flex-row items-center gap-2 sm:gap-3">
+                <div className="flex flex-col sm:flex-row flex-1 gap-2 sm:gap-3">
+                  <select
+                    value={selectedState}
+                    onChange={(e) => {
+                      setSelectedState(e.target.value);
+                      setSelectedCounty(''); // Reset county and city when state changes
+                      setSelectedCity('');
+                    }}
+                    disabled={false}
+                    className={`p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
+                      isDarkMode
                         ? 'bg-gray-700 text-white border-gray-600'
                         : 'bg-white text-gray-900 border-gray-300'
-                  }`}
-                >
-                  <option value="">Select County</option>
-                  {availableCounties.map(county => (
-                    <option key={county.name} value={county.name}>{county.name}</option>
-                  ))}
-                </select>
+                    }`}
+                  >
+                    <option value="">Select State</option>
+                    {availableStates.map(state => (
+                      <option key={state.code} value={state.code}>{state.name} ({state.code})</option>
+                    ))}
+                  </select>
 
-                <select
-                  value={selectedCity}
-                  onChange={(e) => setSelectedCity(e.target.value)}
-                  disabled={!selectedState}
-                  className={`w-40 p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
-                    !selectedState
-                      ? isDarkMode
-                        ? 'bg-gray-800 text-gray-500 border-gray-700'
-                        : 'bg-gray-100 text-gray-500 border-gray-300'
-                      : isDarkMode
-                        ? 'bg-gray-700 text-white border-gray-600'
-                        : 'bg-white text-gray-900 border-gray-300'
-                  }`}
-                >
-                  <option value="">Select City</option>
-                  {availableCities.map(city => (
-                    <option key={city.name} value={city.name}>{city.name}</option>
-                  ))}
-                </select>
+                  <select
+                    value={selectedCounty}
+                    onChange={(e) => {
+                      setSelectedCounty(e.target.value);
+                      setSelectedCity(''); // Reset city when county changes
+                    }}
+                    disabled={!selectedState}
+                    className={`sm:w-40 p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
+                      !selectedState
+                        ? isDarkMode
+                          ? 'bg-gray-800 text-gray-500 border-gray-700'
+                          : 'bg-gray-100 text-gray-500 border-gray-300'
+                        : isDarkMode
+                          ? 'bg-gray-700 text-white border-gray-600'
+                          : 'bg-white text-gray-900 border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select County</option>
+                    {availableCounties.map(county => (
+                      <option key={county.name} value={county.name}>{county.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    disabled={!selectedState}
+                    className={`sm:w-40 p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
+                      !selectedState
+                        ? isDarkMode
+                          ? 'bg-gray-800 text-gray-500 border-gray-700'
+                          : 'bg-gray-100 text-gray-500 border-gray-300'
+                        : isDarkMode
+                          ? 'bg-gray-700 text-white border-gray-600'
+                          : 'bg-white text-gray-900 border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select City</option>
+                    {availableCities.map(city => (
+                      <option key={city.name} value={city.name}>{city.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {searchPerformed && (
+                  <button
+                    onClick={handleReset}
+                    disabled={isLoading}
+                    className={`py-2 px-4 sm:px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors whitespace-nowrap ${
+                      isDarkMode
+                        ? 'bg-gray-600 text-white hover:bg-gray-500'
+                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
+                )}
               </div>
             ) : searchMode === 'upload' ? (
               // Upload Search Controls
@@ -2618,38 +2651,6 @@ const GeoApplication = () => {
                 )}
               </>
             ) : null}
-            {searchMode === 'polygon' && (
-              <div className="flex justify-center mt-1">
-                <button
-                  onClick={handleReset}
-                  disabled={isLoading || drawnShapes.length === 0}
-                className={`py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors ${
-                  drawnShapes.length === 0
-                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                    : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                  <RotateCcw className="h-4 w-4" />
-                  <span>Reset</span>
-                </button>
-              </div>
-            )}
-            {searchMode === 'hierarchy' && (
-              <div className="flex justify-center mt-1">
-                <button
-                  onClick={handleReset}
-                  disabled={isLoading || !selectedState}
-                className={`py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors ${
-                  !selectedState
-                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                    : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                  <RotateCcw className="h-4 w-4" />
-                  <span>Reset</span>
-                </button>
-              </div>
-            )}
             </div>
           </div>
 
@@ -2663,29 +2664,45 @@ const GeoApplication = () => {
                 : '100%'
             }}
           >
-            {/* Map Type Controls - Moved to Right */}
-            <div className={`absolute top-4 right-4 z-[1000] ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border p-2`}>
-              <div className="space-y-1">
-                {[
-                  { type: 'street', label: 'Street', icon: MapIcon },
-                  { type: 'satellite', label: 'Satellite', icon: Globe },
-                  { type: 'terrain', label: 'Terrain', icon: Layers }
-                ].map(({ type, label, icon: Icon }) => (
-                  <button
-                    key={type}
-                    onClick={() => setMapType(type)}
-                    className={`w-full p-2 text-left rounded flex items-center space-x-2 transition-colors ${
-                      mapType === type
-                        ? 'bg-red-600 text-white'
-                        : isDarkMode
-                          ? 'hover:bg-gray-700 text-gray-300'
-                          : 'hover:bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="text-sm">{label}</span>
-                  </button>
-                ))}
+            {/* Collapsible Map Type Controls - Below Search Bar */}
+            <div className={`absolute top-20 left-4 z-[999] transition-all duration-300 ${
+              showMapLayers ? 'translate-x-0' : '-translate-x-[calc(100%-40px)]'
+            }`}>
+              <div className={`flex items-start`}>
+                <div className={`${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border overflow-hidden transition-all duration-300 ${
+                  showMapLayers ? 'w-auto p-2' : 'w-0 p-0'
+                }`}>
+                  <div className="space-y-1">
+                    {[
+                      { type: 'street', label: 'Street', icon: MapIcon },
+                      { type: 'satellite', label: 'Satellite', icon: Globe },
+                      { type: 'terrain', label: 'Terrain', icon: Layers }
+                    ].map(({ type, label, icon: Icon }) => (
+                      <button
+                        key={type}
+                        onClick={() => setMapType(type)}
+                        className={`w-full p-2 text-left rounded flex items-center space-x-2 transition-colors whitespace-nowrap ${
+                          mapType === type
+                            ? 'bg-red-600 text-white'
+                            : isDarkMode
+                              ? 'hover:bg-gray-700 text-gray-300'
+                              : 'hover:bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="text-sm">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Tab to pull out/collapse */}
+                <button
+                  onClick={() => setShowMapLayers(!showMapLayers)}
+                  className={`${isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-white border-gray-200 text-gray-700'} border border-l-0 rounded-r-lg shadow-lg p-2 hover:bg-opacity-90 transition-colors`}
+                  title={showMapLayers ? 'Hide map layers' : 'Show map layers'}
+                >
+                  <Layers className="h-4 w-4" />
+                </button>
               </div>
             </div>
 
