@@ -492,32 +492,57 @@ const GeoApplication = () => {
     setCurrentViewport(viewport);
   }, []);
 
-  // Load boundaries specifically for search results (only load ZIPs that are in results)
+  // Load boundaries specifically for search results + nearby ZIPs
   const loadBoundariesForSearchResults = async (additionalZips = []) => {
     if (!zipResults || zipResults.length === 0) return;
 
     // Extract unique ZIP codes from search results
     const resultZipCodes = [...new Set(zipResults.map(result => result.zipCode || result.zipcode))];
 
-    // Combine with any additional ZIPs requested
-    const allZipCodes = [...new Set([...resultZipCodes, ...additionalZips])];
+    // For radius/polygon searches, also fetch nearby ZIPs (expand search area)
+    let nearbyZipCodes = [];
+    if ((searchMode === 'radius' || searchMode === 'polygon') && radiusCenter) {
+      try {
+        // Fetch ZIPs in expanded radius (add 1 mile to original radius)
+        const expandedRadius = (searchMode === 'radius' ? radius : 5) + 1;
+        const nearbySearchParams = {
+          lat: radiusCenter[0],
+          lng: radiusCenter[1],
+          radius: expandedRadius,
+          limit: 200,
+          offset: 0
+        };
 
-    console.log(`Loading boundaries for ${allZipCodes.length} ZIP codes (${resultZipCodes.length} from results, ${additionalZips.length} additional)`);
+        const nearbyResult = await ZipCodeService.search(nearbySearchParams);
+        const nearbyZips = nearbyResult.results.map(zip => zip.zipcode);
+
+        // Filter out ZIPs that are already in results
+        nearbyZipCodes = nearbyZips.filter(zip => !resultZipCodes.includes(zip));
+        console.log(`Found ${nearbyZipCodes.length} nearby ZIPs within expanded radius`);
+      } catch (error) {
+        console.error('Failed to fetch nearby ZIPs:', error);
+      }
+    }
+
+    // Combine all ZIP codes
+    const allZipCodes = [...new Set([...resultZipCodes, ...additionalZips, ...nearbyZipCodes])];
+
+    console.log(`Loading boundaries for ${allZipCodes.length} ZIPs (${resultZipCodes.length} results, ${nearbyZipCodes.length} nearby, ${additionalZips.length} additional)`);
     setLoadingZipBoundaries(true);
 
     try {
-      // Fetch boundaries for search result ZIPs only
+      // Fetch boundaries for all ZIPs
       const searchResultBoundaries = await zipBoundariesService.getMultipleZipBoundaries(
         allZipCodes,
         true
       );
 
       if (searchResultBoundaries && searchResultBoundaries.features.length > 0) {
-        // Mark features based on whether they're in search results
+        // Mark features based on their status
         searchResultBoundaries.features.forEach(feature => {
           const zipCode = feature.properties?.zipcode;
           feature.properties.inSearchResults = resultZipCodes.includes(zipCode);
-          feature.properties.isAdditional = additionalZips.includes(zipCode);
+          feature.properties.isAdditional = nearbyZipCodes.includes(zipCode) || additionalZips.includes(zipCode);
         });
 
         setZipBoundariesData(searchResultBoundaries);
@@ -2793,11 +2818,27 @@ const GeoApplication = () => {
               {/* County Boundaries Layer */}
               {showCountyBorders && countyBoundaries && (
                 <GeoJSON
-                  key={`county-boundaries-${selectedCountyBoundary?.name}`}
+                  key={`county-boundaries-${selectedCountyBoundary?.name}-${excludedItems.size}`}
                   data={countyBoundaries}
                   style={(feature) => {
+                    const countyName = feature.properties?.NAME;
                     const isSelected = selectedCountyBoundary &&
-                      feature.properties?.NAME === selectedCountyBoundary.name;
+                      countyName === selectedCountyBoundary.name;
+
+                    // Check if county is excluded
+                    const countyData = countyResults.find(c => c.name === countyName);
+                    const isExcluded = countyData && excludedItems.has(getRemovalKey('county', countyData));
+
+                    if (isExcluded) {
+                      return {
+                        color: '#6b7280',
+                        weight: 2,
+                        opacity: 0.6,
+                        fillOpacity: 0.05,
+                        fillColor: '#6b7280',
+                        dashArray: '10, 5'
+                      };
+                    }
 
                     return {
                       color: isSelected ? '#dc2626' : '#ff7800',
@@ -2822,13 +2863,45 @@ const GeoApplication = () => {
                         ${hasResults ? `ZIPs in results: ${countyZips.length}` : 'No ZIPs in search results'}
                       `);
 
-                      // Click handler to select county
-                      layer.on('click', () => {
+                      // Click handler to select county and load ALL its ZIPs
+                      layer.on('click', async () => {
                         setSelectedCountyBoundary({ name: countyName, state: stateName });
-                        // Load ZIP boundaries for this county
-                        if (hasResults) {
-                          const countyZipCodes = countyZips.map(z => z.zipCode);
-                          loadBoundariesForSearchResults(countyZipCodes);
+
+                        // Fetch ALL ZIPs in this county (not just from current results)
+                        try {
+                          console.log(`Fetching all ZIPs for ${countyName} County, ${stateName}`);
+
+                          // Use search API to get all ZIPs in county
+                          const countySearchParams = {
+                            query: `${countyName} County, ${stateName}`,
+                            limit: 500,
+                            offset: 0
+                          };
+
+                          const countySearchResult = await ZipCodeService.search(countySearchParams);
+                          const allCountyZips = countySearchResult.results
+                            .filter(zip => zip.county === countyName && zip.stateCode === stateName)
+                            .map(zip => zip.zipcode);
+
+                          console.log(`Found ${allCountyZips.length} total ZIPs in ${countyName} County`);
+
+                          // Load boundaries for all county ZIPs
+                          if (allCountyZips.length > 0) {
+                            // Get existing result ZIPs in this county
+                            const resultZipsInCounty = zipResults
+                              .filter(z => z.county === countyName && z.state === stateName)
+                              .map(z => z.zipCode);
+
+                            // Load all county ZIP boundaries, marking which are in results
+                            await loadBoundariesForSearchResults(allCountyZips.filter(z => !resultZipsInCounty.includes(z)));
+                          }
+                        } catch (error) {
+                          console.error(`Failed to fetch ZIPs for ${countyName} County:`, error);
+                          // Fallback to loading only result ZIPs
+                          if (hasResults) {
+                            const countyZipCodes = countyZips.map(z => z.zipCode);
+                            loadBoundariesForSearchResults(countyZipCodes);
+                          }
                         }
                       });
                     }
@@ -2847,6 +2920,9 @@ const GeoApplication = () => {
                     const isFocused = zipCode === focusedZipCode;
                     const isAdditional = feature.properties?.isAdditional;
 
+                    // Check if ZIP is excluded
+                    const isExcluded = excludedItems.has(getRemovalKey('zip', { zipCode }));
+
                     // Different styles based on status
                     if (isFocused) {
                       return {
@@ -2855,6 +2931,16 @@ const GeoApplication = () => {
                         opacity: 1,
                         fillOpacity: 0.2,
                         fillColor: '#dc2626'
+                      };
+                    } else if (isExcluded) {
+                      // Excluded ZIPs - striped red pattern
+                      return {
+                        color: '#ef4444',
+                        weight: 2,
+                        opacity: 0.7,
+                        fillOpacity: 0.08,
+                        fillColor: '#ef4444',
+                        dashArray: '10, 5, 2, 5' // Complex dash pattern for visibility
                       };
                     } else if (isInResults) {
                       return {
@@ -2865,13 +2951,14 @@ const GeoApplication = () => {
                         fillColor: '#dc2626'
                       };
                     } else if (isAdditional) {
+                      // Available to add - blue with distinctive pattern
                       return {
-                        color: '#6b7280', // Gray for additional/clickable
-                        weight: 1,
-                        opacity: 0.6,
-                        fillOpacity: 0.05,
-                        fillColor: '#6b7280',
-                        dashArray: '3, 3' // Dashed border
+                        color: '#2563eb', // Bright blue for visibility
+                        weight: 2,
+                        opacity: 0.9,
+                        fillOpacity: 0.08,
+                        fillColor: '#3b82f6',
+                        dashArray: '8, 3, 2, 3' // Distinctive dash-dot pattern
                       };
                     } else {
                       return {
@@ -2885,21 +2972,42 @@ const GeoApplication = () => {
                   onEachFeature={(feature, layer) => {
                     const zipCode = feature.properties?.zipcode;
                     const isInResults = feature.properties?.inSearchResults;
+                    const isExcluded = excludedItems.has(getRemovalKey('zip', { zipCode }));
 
                     if (zipCode) {
-                      // Create popup content with add button if not in results
+                      // Create popup content based on status
                       const popupContent = document.createElement('div');
+
+                      let buttonHtml = '';
+                      if (isExcluded) {
+                        buttonHtml = `
+                          <span style="color: #ef4444; font-weight: bold;">❌ Excluded</span><br/>
+                          <button
+                            id="add-zip-${zipCode}"
+                            style="margin-top: 8px; padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                          >
+                            Add Back to Results
+                          </button>
+                        `;
+                      } else if (!isInResults) {
+                        buttonHtml = `
+                          <button
+                            id="add-zip-${zipCode}"
+                            style="margin-top: 8px; padding: 4px 8px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                          >
+                            Add to Results
+                          </button>
+                        `;
+                      } else {
+                        buttonHtml = '<span style="color: green;">✓ In Results</span>';
+                      }
+
                       popupContent.innerHTML = `
                         <div style="min-width: 150px;">
                           <strong>ZIP: ${zipCode}</strong><br/>
-                          ${!isInResults ? `
-                            <button
-                              id="add-zip-${zipCode}"
-                              style="margin-top: 8px; padding: 4px 8px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                            >
-                              Add to Results
-                            </button>
-                          ` : '<span style="color: green;">✓ In Results</span>'}
+                          ${feature.properties.city ? `City: ${feature.properties.city}<br/>` : ''}
+                          ${feature.properties.county ? `County: ${feature.properties.county}<br/>` : ''}
+                          ${buttonHtml}
                         </div>
                       `;
 
