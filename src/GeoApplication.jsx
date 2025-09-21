@@ -346,8 +346,18 @@ const GeoApplication = () => {
 
   // Load ZIP boundaries when toggled or viewport changes
   useEffect(() => {
-    if (showZipBoundaries && currentViewport) {
-      loadZipBoundariesForViewport();
+    if (showZipBoundaries) {
+      // Load cached boundaries first when toggled on
+      const cachedBoundaries = zipBoundariesService.getAllCachedBoundaries();
+      if (cachedBoundaries && cachedBoundaries.features.length > 0) {
+        console.log(`Loaded ${cachedBoundaries.features.length} cached boundaries from localStorage`);
+        setZipBoundariesData(cachedBoundaries);
+      }
+
+      // Then load new boundaries for current viewport
+      if (currentViewport) {
+        loadZipBoundariesForViewport();
+      }
     } else if (!showZipBoundaries) {
       setZipBoundariesData(null);
     }
@@ -2873,17 +2883,31 @@ const GeoApplication = () => {
                             ({zipBoundariesData.features.length})
                           </span>
                         )}
+                        {(() => {
+                          const stats = zipBoundariesService.getCacheStats();
+                          if (stats.available && stats.totalZips > 0) {
+                            return (
+                              <span className="text-[10px] opacity-50" title={`Cache: ${stats.sizeKB}KB, ${stats.viewports} viewports, expires ${stats.expires.toLocaleDateString()}`}>
+                                [💾 {stats.totalZips}]
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </span>
                     </label>
                     {showZipBoundaries && zipBoundariesData && zipBoundariesData.features && zipBoundariesData.features.length > 0 && (
                       <button
-                        onClick={() => setZipBoundariesData(null)}
+                        onClick={() => {
+                          setZipBoundariesData(null);
+                          zipBoundariesService.clearPersistentCache();
+                        }}
                         className={`text-[10px] px-2 py-0.5 rounded ${
                           isDarkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
                         }`}
-                        title="Clear cached ZIP boundaries"
+                        title="Clear all cached ZIP boundaries (memory + localStorage)"
                       >
-                        Clear
+                        Clear All
                       </button>
                     )}
                   </div>

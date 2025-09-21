@@ -3,6 +3,8 @@
  * Connects to the droplet-hosted ZIP boundaries API
  */
 
+import boundaryCache from './boundaryCache';
+
 const API_BASE_URL = process.env.NODE_ENV === 'production'
   ? 'http://45.55.36.108:8002'  // Production API
   : 'http://45.55.36.108:8002'; // Using production API for now since it's ready
@@ -68,7 +70,13 @@ class ZipBoundariesService {
   async getViewportBoundaries(bounds, limit = 50, simplified = true) {
     const { north, south, east, west } = bounds;
 
-    // Don't cache viewport queries as they change frequently
+    // Check localStorage cache first
+    const cached = boundaryCache.getViewportBoundaries(bounds);
+    if (cached) {
+      console.log(`Using cached boundaries for viewport (${cached.features.length} features)`);
+      return cached;
+    }
+
     try {
       const params = new URLSearchParams({
         north: north.toString(),
@@ -91,6 +99,12 @@ class ZipBoundariesService {
       const data = await response.json();
 
       console.log(`Fetched ${data.features.length} ZIP boundaries for viewport`);
+
+      // Store in localStorage cache
+      if (data.features.length > 0) {
+        boundaryCache.storeViewportBoundaries(bounds, data);
+      }
+
       return data;
     } catch (error) {
       console.error(`Error fetching viewport boundaries: ${error.message}`);
@@ -178,6 +192,47 @@ class ZipBoundariesService {
     if (removed > 0) {
       console.log(`Cleaned ${removed} expired cache entries`);
     }
+  }
+
+  /**
+   * Get all cached boundaries from localStorage
+   * @returns {Object|null} GeoJSON FeatureCollection or null
+   */
+  getAllCachedBoundaries() {
+    return boundaryCache.getAllCachedBoundaries();
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Cache stats
+   */
+  getCacheStats() {
+    return boundaryCache.getStats();
+  }
+
+  /**
+   * Clear localStorage cache
+   */
+  clearPersistentCache() {
+    boundaryCache.clearCache();
+    console.log('Persistent cache cleared');
+  }
+
+  /**
+   * Export cache for backup
+   * @returns {string} JSON string of cache
+   */
+  exportCache() {
+    return boundaryCache.exportCache();
+  }
+
+  /**
+   * Import cache from backup
+   * @param {string} data - JSON string of cache
+   * @returns {boolean} Success status
+   */
+  importCache(data) {
+    return boundaryCache.importCache(data);
   }
 }
 
