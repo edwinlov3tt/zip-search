@@ -27,13 +27,13 @@ class ZipBoundariesService {
     // Check cache
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      console.log(`Cache hit for ZIP ${zipCode}`);
+      // console.log(`Cache hit for ZIP ${zipCode}`);
       return cached.data;
     }
 
     try {
       const url = `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
-      console.log(`Fetching ZIP boundary from: ${url}`);
+      // console.log(`Fetching ZIP boundary from: ${url}`);
 
       const response = await fetch(url);
 
@@ -52,7 +52,7 @@ class ZipBoundariesService {
         expires: Date.now() + this.cacheTimeout
       });
 
-      console.log(`Successfully fetched boundary for ZIP ${zipCode}`);
+      // console.log(`Successfully fetched boundary for ZIP ${zipCode}`);
       return data;
     } catch (error) {
       console.error(`Error fetching ZIP boundary: ${error.message}`);
@@ -74,7 +74,7 @@ class ZipBoundariesService {
       };
     }
 
-    console.log(`Fetching boundaries for ${zipCodes.length} specific ZIP codes`);
+    // console.log(`Fetching boundaries for ${zipCodes.length} specific ZIP codes`);
 
     const features = [];
     const errors = [];
@@ -89,7 +89,7 @@ class ZipBoundariesService {
           const boundary = await this.getZipBoundary(zipCode, simplified);
           return boundary;
         } catch (error) {
-          console.warn(`Failed to fetch boundary for ZIP ${zipCode}:`, error.message);
+          // console.warn(`Failed to fetch boundary for ZIP ${zipCode}:`, error.message);
           errors.push(zipCode);
           return null;
         }
@@ -105,7 +105,7 @@ class ZipBoundariesService {
       });
     }
 
-    console.log(`Successfully fetched ${features.length} ZIP boundaries (${errors.length} failed)`);
+    // console.log(`Successfully fetched ${features.length} ZIP boundaries (${errors.length} failed)`);
 
     return {
       type: 'FeatureCollection',

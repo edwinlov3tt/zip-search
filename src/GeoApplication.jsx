@@ -518,7 +518,7 @@ const GeoApplication = () => {
 
         // Filter out ZIPs that are already in results
         nearbyZipCodes = nearbyZips.filter(zip => !resultZipCodes.includes(zip));
-        console.log(`Found ${nearbyZipCodes.length} nearby ZIPs within expanded radius`);
+        // console.log(`Found ${nearbyZipCodes.length} nearby ZIPs within expanded radius`);
       } catch (error) {
         console.error('Failed to fetch nearby ZIPs:', error);
       }
@@ -527,7 +527,7 @@ const GeoApplication = () => {
     // Combine all ZIP codes
     const allZipCodes = [...new Set([...resultZipCodes, ...additionalZips, ...nearbyZipCodes])];
 
-    console.log(`Loading boundaries for ${allZipCodes.length} ZIPs (${resultZipCodes.length} results, ${nearbyZipCodes.length} nearby, ${additionalZips.length} additional)`);
+    // console.log(`Loading boundaries for ${allZipCodes.length} ZIPs (${resultZipCodes.length} results, ${nearbyZipCodes.length} nearby, ${additionalZips.length} additional)`);
     setLoadingZipBoundaries(true);
 
     try {
@@ -546,7 +546,7 @@ const GeoApplication = () => {
         });
 
         setZipBoundariesData(searchResultBoundaries);
-        console.log(`Loaded ${searchResultBoundaries.features.length} boundaries`);
+        // console.log(`Loaded ${searchResultBoundaries.features.length} boundaries`);
       }
     } catch (error) {
       console.error('Failed to load search result boundaries:', error);
@@ -2818,7 +2818,7 @@ const GeoApplication = () => {
               {/* County Boundaries Layer */}
               {showCountyBorders && countyBoundaries && (
                 <GeoJSON
-                  key={`county-boundaries-${selectedCountyBoundary?.name}-${excludedItems.size}`}
+                  key={`county-boundaries-${selectedCountyBoundary?.name}-${removedItems.size}`}
                   data={countyBoundaries}
                   style={(feature) => {
                     const countyName = feature.properties?.NAME;
@@ -2827,7 +2827,7 @@ const GeoApplication = () => {
 
                     // Check if county is excluded
                     const countyData = countyResults.find(c => c.name === countyName);
-                    const isExcluded = countyData && excludedItems.has(getRemovalKey('county', countyData));
+                    const isExcluded = countyData && removedItems.has(getRemovalKey('county', countyData));
 
                     if (isExcluded) {
                       return {
@@ -2869,7 +2869,7 @@ const GeoApplication = () => {
 
                         // Fetch ALL ZIPs in this county (not just from current results)
                         try {
-                          console.log(`Fetching all ZIPs for ${countyName} County, ${stateName}`);
+                          // console.log(`Fetching all ZIPs for ${countyName} County, ${stateName}`);
 
                           // Use search API to get all ZIPs in county
                           const countySearchParams = {
@@ -2883,7 +2883,7 @@ const GeoApplication = () => {
                             .filter(zip => zip.county === countyName && zip.stateCode === stateName)
                             .map(zip => zip.zipcode);
 
-                          console.log(`Found ${allCountyZips.length} total ZIPs in ${countyName} County`);
+                          // console.log(`Found ${allCountyZips.length} total ZIPs in ${countyName} County`);
 
                           // Load boundaries for all county ZIPs
                           if (allCountyZips.length > 0) {
@@ -2921,7 +2921,7 @@ const GeoApplication = () => {
                     const isAdditional = feature.properties?.isAdditional;
 
                     // Check if ZIP is excluded
-                    const isExcluded = excludedItems.has(getRemovalKey('zip', { zipCode }));
+                    const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
 
                     // Different styles based on status
                     if (isFocused) {
@@ -2972,7 +2972,7 @@ const GeoApplication = () => {
                   onEachFeature={(feature, layer) => {
                     const zipCode = feature.properties?.zipcode;
                     const isInResults = feature.properties?.inSearchResults;
-                    const isExcluded = excludedItems.has(getRemovalKey('zip', { zipCode }));
+                    const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
 
                     if (zipCode) {
                       // Create popup content based on status
@@ -3146,11 +3146,11 @@ const GeoApplication = () => {
                         placeholder="Search"
                         value={drawerSearchTerm}
                         onChange={(e) => {
-                          console.log('Drawer search input changed:', e.target.value);
+                          // console.log('Drawer search input changed:', e.target.value);
                           setDrawerSearchTerm(e.target.value);
                         }}
-                        onFocus={() => console.log('Drawer search input focused')}
-                        onBlur={() => console.log('Drawer search input blurred')}
+                        onFocus={() => {}}
+                        onBlur={() => {}}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                         className={`w-48 pl-7 pr-3 py-1 text-sm border rounded outline-none focus:ring-1 focus:ring-red-500 relative z-50 ${
