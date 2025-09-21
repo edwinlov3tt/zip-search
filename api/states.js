@@ -15,27 +15,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use materialized view for instant results (if available)
-    // Otherwise fallback to spatial table
-    let { data, error } = await supabase
-      .from('states_view')
-      .select('code, name');
-
-    // If view doesn't exist, query the spatial table
-    if (error || !data) {
-      console.log('Using fallback query for states');
-      const result = await supabase
-        .from('zipcodes_spatial')
-        .select('state_code, state')
-        .not('state_code', 'is', null)
-        .not('state', 'is', null)
-        .neq('state_code', '')
-        .neq('state', '')
-        .order('state');
-
-      data = result.data;
-      error = result.error;
-    }
+    // Query the spatial table directly for states
+    const { data, error } = await supabase
+      .from('zipcodes_spatial')
+      .select('state_code, state')
+      .not('state_code', 'is', null)
+      .not('state', 'is', null)
+      .neq('state_code', '')
+      .neq('state', '')
+      .order('state');
 
     if (error) throw error;
 
