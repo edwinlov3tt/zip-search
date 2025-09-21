@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, FeatureGroup, GeoJSON } from 'react-leaflet';
 import { EditControl } from "react-leaflet-draw";
 import { Search, Map as MapIcon, Layers, Circle as CircleIcon, Square, Download, Filter, MapPin, Crosshair, ZoomIn, ZoomOut, Maximize2, RotateCcw, ChevronUp, Globe, Copy, FileDown, Plus, X, Minus, ArrowUpDown, Sun, Moon, Check, Upload } from 'lucide-react';
@@ -9,6 +9,20 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { ZipCodeService } from './services/zipCodeService';
 import { geocodingService } from './services/geocodingService';
 import { mapboxGeocodingService } from './services/mapboxGeocodingService';
+import zipBoundariesService from './services/zipBoundariesService';
+
+// Debounce utility function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 // Fix for default markers in React-Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -19,7 +33,7 @@ L.Icon.Default.mergeOptions({
 });
 
 // Map component that handles view changes and click events
-function MapController({ center, zoom, onMapClick, crosshairCursor }) {
+function MapController({ center, zoom, onMapClick, crosshairCursor, onViewportChange }) {
   const map = useMap();
 
   useEffect(() => {
@@ -36,6 +50,32 @@ function MapController({ center, zoom, onMapClick, crosshairCursor }) {
       };
     }
   }, [map, onMapClick]);
+
+  // Track viewport changes for ZIP boundaries
+  useEffect(() => {
+    if (onViewportChange) {
+      const handleViewportChange = () => {
+        const bounds = map.getBounds();
+        onViewportChange({
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest()
+        });
+      };
+
+      map.on('moveend', handleViewportChange);
+      map.on('zoomend', handleViewportChange);
+
+      // Initial viewport
+      handleViewportChange();
+
+      return () => {
+        map.off('moveend', handleViewportChange);
+        map.off('zoomend', handleViewportChange);
+      };
+    }
+  }, [map, onViewportChange]);
 
   // Apply crosshair cursor to all map layers
   useEffect(() => {
@@ -129,6 +169,10 @@ const GeoApplication = () => {
   const [searchError, setSearchError] = useState(null);
   const [showCountyBorders, setShowCountyBorders] = useState(false);
   const [countyBoundaries, setCountyBoundaries] = useState(null);
+  const [showZipBoundaries, setShowZipBoundaries] = useState(false);
+  const [zipBoundariesData, setZipBoundariesData] = useState(null);
+  const [loadingZipBoundaries, setLoadingZipBoundaries] = useState(false);
+  const [currentViewport, setCurrentViewport] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCustomExport, setShowCustomExport] = useState(false);
@@ -300,6 +344,15 @@ const GeoApplication = () => {
     }
   }, [showCountyBorders]);
 
+  // Load ZIP boundaries when toggled or viewport changes
+  useEffect(() => {
+    if (showZipBoundaries && currentViewport) {
+      loadZipBoundariesForViewport();
+    } else if (!showZipBoundaries) {
+      setZipBoundariesData(null);
+    }
+  }, [showZipBoundaries, currentViewport]);
+
 
   const loadCountyBoundaries = async () => {
     try {
@@ -317,6 +370,41 @@ const GeoApplication = () => {
       console.error('Failed to load county boundaries:', error);
     }
   };
+
+  // Debounced function to load ZIP boundaries for viewport
+  const loadZipBoundariesForViewport = useCallback(
+    debounce(async () => {
+      if (!currentViewport || !showZipBoundaries) return;
+
+      setLoadingZipBoundaries(true);
+      try {
+        // Determine appropriate limit based on zoom level
+        const zoomLevel = mapRef.current?.getZoom() || 10;
+        const limit = zoomLevel > 12 ? 100 : zoomLevel > 10 ? 50 : 30;
+
+        const data = await zipBoundariesService.getViewportBoundaries(
+          currentViewport,
+          limit,
+          true // Use simplified geometry
+        );
+
+        if (data && data.features) {
+          setZipBoundariesData(data);
+          console.log(`Loaded ${data.features.length} ZIP boundaries for current viewport`);
+        }
+      } catch (error) {
+        console.error('Failed to load ZIP boundaries:', error);
+      } finally {
+        setLoadingZipBoundaries(false);
+      }
+    }, 500),
+    [currentViewport, showZipBoundaries]
+  );
+
+  // Handle viewport change
+  const handleViewportChange = useCallback((viewport) => {
+    setCurrentViewport(viewport);
+  }, []);
 
 
   // Helper function to generate removal key
@@ -2418,6 +2506,7 @@ const GeoApplication = () => {
                 zoom={mapZoom}
                 onMapClick={handleMapClick}
                 crosshairCursor={searchMode === 'radius' && isSearchMode}
+                onViewportChange={handleViewportChange}
               />
 
               {/* Drawing Controls - Only for Polygon Search */}
@@ -2583,6 +2672,42 @@ const GeoApplication = () => {
                 />
               )}
 
+              {/* ZIP Boundaries Layer */}
+              {showZipBoundaries && zipBoundariesData && (
+                <GeoJSON
+                  key={JSON.stringify(currentViewport)} // Force re-render on viewport change
+                  data={zipBoundariesData}
+                  style={{
+                    color: '#dc2626',
+                    weight: 1,
+                    opacity: 0.7,
+                    fillOpacity: 0.05
+                  }}
+                  onEachFeature={(feature, layer) => {
+                    if (feature.properties && feature.properties.zipcode) {
+                      layer.bindPopup(`<strong>ZIP: ${feature.properties.zipcode}</strong>`);
+                      // Add hover effect
+                      layer.on({
+                        mouseover: (e) => {
+                          e.target.setStyle({
+                            weight: 2,
+                            color: '#ff0000',
+                            fillOpacity: 0.15
+                          });
+                        },
+                        mouseout: (e) => {
+                          e.target.setStyle({
+                            weight: 1,
+                            color: '#dc2626',
+                            fillOpacity: 0.05
+                          });
+                        }
+                      });
+                    }
+                  }}
+                />
+              )}
+
             </MapContainer>
 
           </div>
@@ -2685,7 +2810,7 @@ const GeoApplication = () => {
                 {/* Actions and Boundary Controls */}
                 <div className="flex items-center space-x-4">
                   {/* Boundary Toggle Controls */}
-                  <div className={`flex items-center space-x-2 border-r pr-4 ${isDarkMode ? 'border-gray-500' : 'border-gray-300'}`}>
+                  <div className={`flex items-center space-x-4 border-r pr-4 ${isDarkMode ? 'border-gray-500' : 'border-gray-300'}`}>
                     <label className="flex items-center space-x-1 text-xs">
                       <input
                         type="checkbox"
@@ -2694,6 +2819,21 @@ const GeoApplication = () => {
                         className="rounded"
                       />
                       <span>County Borders</span>
+                    </label>
+                    <label className="flex items-center space-x-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={showZipBoundaries}
+                        onChange={(e) => setShowZipBoundaries(e.target.checked)}
+                        className="rounded"
+                        disabled={loadingZipBoundaries}
+                      />
+                      <span className="flex items-center space-x-1">
+                        ZIP Boundaries
+                        {loadingZipBoundaries && (
+                          <span className="inline-block animate-spin">⟳</span>
+                        )}
+                      </span>
                     </label>
                   </div>
 
