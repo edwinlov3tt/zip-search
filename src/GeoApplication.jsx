@@ -2251,61 +2251,82 @@ const GeoApplication = () => {
 
   return (
     <div className={`h-screen flex flex-col ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header */}
-      <header className={`${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm border-b px-6 py-4 z-20`}>
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Globe className="h-8 w-8 text-red-600" />
-            <h1 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>GeoSearch Pro</h1>
+      {/* Header - Mobile Responsive */}
+      <header className={`${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm border-b px-3 sm:px-6 py-3 sm:py-4 z-20`}>
+        <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-0">
+          {/* Logo and Title */}
+          <div className="flex items-center justify-between w-full sm:w-auto">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <Globe className="h-6 sm:h-8 w-6 sm:w-8 text-red-600" />
+              <h1 className={`text-lg sm:text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                <span className="hidden sm:inline">GeoSearch Pro</span>
+                <span className="sm:hidden">GeoSearch</span>
+              </h1>
+            </div>
+
+            {/* Mobile Dark Mode Toggle */}
+            <div className="sm:hidden">
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className={`p-2 rounded-lg ${isDarkMode ? 'text-yellow-400' : 'text-gray-600'}`}
+              >
+                {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
 
-          {/* Search Mode Toggle - Absolutely Centered in Header */}
-          <div className="absolute left-1/2 transform -translate-x-1/2">
-            <div className={`flex ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg p-1`}>
+          {/* Search Mode Toggle - Responsive */}
+          <div className="sm:absolute sm:left-1/2 sm:transform sm:-translate-x-1/2 w-full sm:w-auto">
+            <div className={`flex ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg p-0.5 sm:p-1`}>
               <button
                 onClick={() => handleSearchModeChange('radius')}
-                className={`px-4 py-2 text-sm rounded transition-colors ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded transition-colors ${
                   searchMode === 'radius'
                     ? `${isDarkMode ? 'bg-gray-600 text-white' : 'bg-white text-gray-900'} shadow-sm`
                     : `${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`
                 }`}
               >
-                Radius Search
+                <span className="hidden sm:inline">Radius Search</span>
+                <span className="sm:hidden">Radius</span>
               </button>
               <button
                 onClick={() => handleSearchModeChange('polygon')}
-                className={`px-4 py-2 text-sm rounded transition-colors ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded transition-colors ${
                   searchMode === 'polygon'
                     ? `${isDarkMode ? 'bg-gray-600 text-white' : 'bg-white text-gray-900'} shadow-sm`
                     : `${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`
                 }`}
               >
-                Polygon Search
+                <span className="hidden sm:inline">Polygon Search</span>
+                <span className="sm:hidden">Polygon</span>
               </button>
               <button
                 onClick={() => handleSearchModeChange('hierarchy')}
-                className={`px-4 py-2 text-sm rounded transition-colors ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded transition-colors ${
                   searchMode === 'hierarchy'
                     ? `${isDarkMode ? 'bg-gray-600 text-white' : 'bg-white text-gray-900'} shadow-sm`
                     : `${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`
                 }`}
               >
-                Hierarchy Search
+                <span className="hidden sm:inline">Hierarchy Search</span>
+                <span className="sm:hidden">Hierarchy</span>
               </button>
               <button
                 onClick={() => handleSearchModeChange('upload')}
-                className={`px-4 py-2 text-sm rounded transition-colors ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded transition-colors ${
                   searchMode === 'upload'
                     ? `${isDarkMode ? 'bg-gray-600 text-white' : 'bg-white text-gray-900'} shadow-sm`
                     : `${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`
                 }`}
               >
-                Upload Search
+                <span className="hidden sm:inline">Upload Search</span>
+                <span className="sm:hidden">Upload</span>
               </button>
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          {/* Desktop Controls */}
+          <div className="hidden sm:flex items-center space-x-4">
             {/* Dark Mode Toggle */}
             <div className={`flex items-center ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-full p-1`}>
               <button
@@ -2341,13 +2362,13 @@ const GeoApplication = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
-          {/* Floating Search Container - positioned relative to map container */}
-          <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border p-4`}>
-          <div className="flex items-center space-x-4">
+          {/* Floating Search Container - responsive and mobile-friendly */}
+          <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border p-3 sm:p-4 w-[calc(100%-2rem)] sm:w-auto max-w-[95vw]`}>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             {searchMode === 'radius' ? (
-              // Radius Search Controls
+              // Radius Search Controls - Mobile Optimized
               <>
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-initial">
                   <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 z-10 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
                   <input
                     type="text"
@@ -2357,7 +2378,7 @@ const GeoApplication = () => {
                     onBlur={handleAutocompleteBlur}
                     onFocus={() => searchTerm.length >= 2 && autocompleteResults.length > 0 && setShowAutocomplete(true)}
                     disabled={searchMode === 'radius' && !isSearchMode}
-                    className={`w-[380px] pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+                    className={`w-full sm:w-[320px] md:w-[380px] pl-10 pr-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
                       searchMode === 'radius' && !isSearchMode
                         ? 'bg-gray-100 text-gray-500 border-gray-300'
                         : isDarkMode
@@ -2416,34 +2437,62 @@ const GeoApplication = () => {
                   )}
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Radius:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={radius}
-                    onChange={(e) => setRadius(parseInt(e.target.value))}
-                    disabled={!isSearchMode}
-                    className={`w-16 p-2 border rounded outline-none focus:ring-2 focus:ring-red-500 ${
+                {/* Integrated Radius Input with embedded "miles" */}
+                <div className="relative flex items-center gap-2">
+                  <div className={`relative ${isSearchMode ? 'animate-pulse' : ''}`}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={radius}
+                      onChange={(e) => setRadius(parseInt(e.target.value))}
+                      disabled={!isSearchMode}
+                      className={`w-24 sm:w-28 pl-3 pr-12 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 text-center font-medium ${
+                        !isSearchMode
+                          ? 'bg-gray-100 text-gray-500 border-gray-300'
+                          : isDarkMode
+                            ? 'bg-gray-700 text-white border-gray-600'
+                            : 'bg-white text-gray-900 border-gray-300'
+                      }`}
+                      style={{ paddingRight: '3.5rem' }}
+                    />
+                    <span className={`absolute right-2 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none ${
                       !isSearchMode
-                        ? 'bg-gray-100 text-gray-500 border-gray-300'
+                        ? 'text-gray-400'
                         : isDarkMode
-                          ? 'bg-gray-700 text-white border-gray-600'
-                          : 'bg-white text-gray-900 border-gray-300'
-                    }`}
-                  />
-                  <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>miles</span>
-                  {isSearchMode && (
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      isDarkMode
-                        ? 'text-red-400 bg-red-900/20'
-                        : 'text-red-600 bg-red-50'
+                          ? 'text-gray-400'
+                          : 'text-gray-500'
                     }`}>
-                      Click on map to place radius
+                      miles
                     </span>
+                  </div>
+
+                  {/* Map click indicator - shown as tooltip on mobile */}
+                  {isSearchMode && (
+                    <div className="hidden sm:flex items-center">
+                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                        isDarkMode
+                          ? 'text-orange-400 bg-orange-900/20'
+                          : 'text-orange-600 bg-orange-50'
+                      }`}>
+                        📍 Click map to place
+                      </span>
+                    </div>
                   )}
                 </div>
+
+                {/* Mobile-only map click indicator */}
+                {isSearchMode && (
+                  <div className="sm:hidden w-full">
+                    <div className={`text-xs text-center px-2 py-1 rounded ${
+                      isDarkMode
+                        ? 'text-orange-400 bg-orange-900/20'
+                        : 'text-orange-600 bg-orange-50'
+                    }`}>
+                      📍 Tap map to place radius
+                    </div>
+                  </div>
+                )}
               </>
             ) : searchMode === 'polygon' ? (
               // Polygon Search Controls
