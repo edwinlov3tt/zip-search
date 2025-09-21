@@ -173,6 +173,8 @@ const GeoApplication = () => {
   const [zipBoundariesData, setZipBoundariesData] = useState(null);
   const [loadingZipBoundaries, setLoadingZipBoundaries] = useState(false);
   const [currentViewport, setCurrentViewport] = useState(null);
+  const [selectedCountyBoundary, setSelectedCountyBoundary] = useState(null);
+  const [focusedZipCode, setFocusedZipCode] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCustomExport, setShowCustomExport] = useState(false);
@@ -202,12 +204,12 @@ const GeoApplication = () => {
   const featureGroupRef = useRef(null);
 
   // Helper function to handle result selection from drawer
-  const handleResultSelect = (type, result) => {
+  const handleResultSelect = async (type, result) => {
     setSelectedResult({ type, id: result.id });
 
     // Ensure we have valid coordinates
-    const lat = parseFloat(result.lat);
-    const lng = parseFloat(result.lng);
+    const lat = parseFloat(result.lat || result.latitude);
+    const lng = parseFloat(result.lng || result.longitude);
 
     if (isNaN(lat) || isNaN(lng)) {
       console.warn('Invalid coordinates for result:', result);
@@ -218,15 +220,53 @@ const GeoApplication = () => {
     const newCenter = [lat, lng];
     setMapCenter(newCenter);
 
-    // Set appropriate zoom level based on type
+    // Set appropriate zoom level and show boundaries based on type
     if (type === 'zip') {
       setMapZoom(13); // Close zoom for ZIP codes
+      setFocusedZipCode(result.zipCode); // Highlight this ZIP
+
+      // Auto-enable ZIP boundaries and load if not already shown
+      if (!showZipBoundaries) {
+        setShowZipBoundaries(true);
+      }
+
+      // Load boundary for this specific ZIP if not already loaded
+      if (zipBoundariesData && !zipBoundariesData.features.find(f => f.properties?.zipcode === result.zipCode)) {
+        await loadBoundariesForSearchResults([result.zipCode]);
+      }
+
     } else if (type === 'city') {
       setMapZoom(11); // Medium zoom for cities
+      setFocusedZipCode(null);
+
+      // Show ZIP boundaries for all ZIPs in this city
+      if (!showZipBoundaries) {
+        setShowZipBoundaries(true);
+      }
+
     } else if (type === 'county') {
       setMapZoom(9); // Wider zoom for counties
+      setFocusedZipCode(null);
+
+      // Show county border and all ZIP boundaries within
+      setShowCountyBorders(true);
+      setSelectedCountyBoundary({ name: result.name, state: result.state });
+
+      // Enable ZIP boundaries to show all ZIPs in county
+      if (!showZipBoundaries) {
+        setShowZipBoundaries(true);
+      }
+
+      // Load all ZIP boundaries for this county
+      const countyZips = zipResults.filter(z => z.county === result.name && z.state === result.state);
+      const countyZipCodes = countyZips.map(z => z.zipCode);
+      if (countyZipCodes.length > 0) {
+        await loadBoundariesForSearchResults(countyZipCodes);
+      }
+
     } else if (type === 'state') {
       setMapZoom(6); // Wide zoom for states
+      setFocusedZipCode(null);
     }
 
     // Open popup for ZIP markers when selected from drawer
@@ -354,10 +394,10 @@ const GeoApplication = () => {
         setZipBoundariesData(cachedBoundaries);
       }
 
-      // Then load new boundaries for current viewport
-      if (currentViewport) {
-        loadZipBoundariesForViewport();
-      }
+      // Don't auto-load viewport boundaries - only load search result boundaries
+      // if (currentViewport) {
+      //   loadZipBoundariesForViewport();
+      // }
     } else if (!showZipBoundaries) {
       setZipBoundariesData(null);
     }
@@ -452,51 +492,36 @@ const GeoApplication = () => {
     setCurrentViewport(viewport);
   }, []);
 
-  // Load boundaries specifically for search results
-  const loadBoundariesForSearchResults = async () => {
+  // Load boundaries specifically for search results (only load ZIPs that are in results)
+  const loadBoundariesForSearchResults = async (additionalZips = []) => {
     if (!zipResults || zipResults.length === 0) return;
 
     // Extract unique ZIP codes from search results
-    const uniqueZipCodes = [...new Set(zipResults.map(result => result.zipcode))];
+    const resultZipCodes = [...new Set(zipResults.map(result => result.zipCode || result.zipcode))];
 
-    console.log(`Loading boundaries for ${uniqueZipCodes.length} ZIP codes from search results`);
+    // Combine with any additional ZIPs requested
+    const allZipCodes = [...new Set([...resultZipCodes, ...additionalZips])];
+
+    console.log(`Loading boundaries for ${allZipCodes.length} ZIP codes (${resultZipCodes.length} from results, ${additionalZips.length} additional)`);
     setLoadingZipBoundaries(true);
 
     try {
-      // Fetch boundaries for search result ZIPs first
+      // Fetch boundaries for search result ZIPs only
       const searchResultBoundaries = await zipBoundariesService.getMultipleZipBoundaries(
-        uniqueZipCodes.slice(0, 50), // Limit to first 50 to avoid overwhelming
+        allZipCodes,
         true
       );
 
       if (searchResultBoundaries && searchResultBoundaries.features.length > 0) {
-        setZipBoundariesData(prevData => {
-          // If no previous data, just return new data
-          if (!prevData || !prevData.features) {
-            console.log(`Loaded ${searchResultBoundaries.features.length} search result boundaries`);
-            return searchResultBoundaries;
-          }
-
-          // Merge with existing data
-          const existingZips = new Set(
-            prevData.features.map(f => f.properties?.zipcode)
-          );
-
-          const newFeatures = searchResultBoundaries.features.filter(
-            feature => !existingZips.has(feature.properties?.zipcode)
-          );
-
-          if (newFeatures.length > 0) {
-            const mergedData = {
-              ...searchResultBoundaries,
-              features: [...newFeatures, ...prevData.features] // Put new features first
-            };
-            console.log(`Added ${newFeatures.length} search result boundaries (total: ${mergedData.features.length})`);
-            return mergedData;
-          }
-
-          return prevData;
+        // Mark features based on whether they're in search results
+        searchResultBoundaries.features.forEach(feature => {
+          const zipCode = feature.properties?.zipcode;
+          feature.properties.inSearchResults = resultZipCodes.includes(zipCode);
+          feature.properties.isAdditional = additionalZips.includes(zipCode);
         });
+
+        setZipBoundariesData(searchResultBoundaries);
+        console.log(`Loaded ${searchResultBoundaries.features.length} boundaries`);
       }
     } catch (error) {
       console.error('Failed to load search result boundaries:', error);
@@ -899,11 +924,11 @@ const GeoApplication = () => {
         setSearchHistory(prev => [searchTerm, ...prev.slice(0, 9)]);
       }
 
-      // Automatically enable ZIP boundaries for radius/polygon searches
-      if ((searchMode === 'radius' || searchMode === 'polygon') && transformedZips.length > 0) {
-        console.log('Auto-enabling ZIP boundaries for search results');
-        setShowZipBoundaries(true);
-      }
+      // Don't auto-enable ZIP boundaries anymore - let user control it
+      // if ((searchMode === 'radius' || searchMode === 'polygon') && transformedZips.length > 0) {
+      //   console.log('Auto-enabling ZIP boundaries for search results');
+      //   setShowZipBoundaries(true);
+      // }
 
     } catch (error) {
       console.error('Search failed:', error);
@@ -2108,11 +2133,11 @@ const GeoApplication = () => {
         setMapCenter([lat, lng]);
         setMapZoom(11);
 
-        // Automatically enable ZIP boundaries for radius search from map click
-        if (transformedZips.length > 0) {
-          console.log('Auto-enabling ZIP boundaries for map click radius search');
-          setShowZipBoundaries(true);
-        }
+        // Don't auto-enable ZIP boundaries anymore - let user control it
+        // if (transformedZips.length > 0) {
+        //   console.log('Auto-enabling ZIP boundaries for map click radius search');
+        //   setShowZipBoundaries(true);
+        // }
 
       } catch (error) {
         console.error('Search failed:', error);
@@ -2768,16 +2793,44 @@ const GeoApplication = () => {
               {/* County Boundaries Layer */}
               {showCountyBorders && countyBoundaries && (
                 <GeoJSON
+                  key={`county-boundaries-${selectedCountyBoundary?.name}`}
                   data={countyBoundaries}
-                  style={{
-                    color: '#ff7800',
-                    weight: 2,
-                    opacity: 0.8,
-                    fillOpacity: 0.1
+                  style={(feature) => {
+                    const isSelected = selectedCountyBoundary &&
+                      feature.properties?.NAME === selectedCountyBoundary.name;
+
+                    return {
+                      color: isSelected ? '#dc2626' : '#ff7800',
+                      weight: isSelected ? 3 : 2,
+                      opacity: isSelected ? 1 : 0.8,
+                      fillOpacity: isSelected ? 0.15 : 0.1,
+                      fillColor: isSelected ? '#dc2626' : '#ff7800'
+                    };
                   }}
                   onEachFeature={(feature, layer) => {
                     if (feature.properties && feature.properties.NAME) {
-                      layer.bindPopup(`<strong>${feature.properties.NAME} County</strong><br/>State: ${feature.properties.STATE}`);
+                      const countyName = feature.properties.NAME;
+                      const stateName = feature.properties.STATE;
+
+                      // Check if this county has ZIPs in results
+                      const countyZips = zipResults.filter(z => z.county === countyName);
+                      const hasResults = countyZips.length > 0;
+
+                      layer.bindPopup(`
+                        <strong>${countyName} County</strong><br/>
+                        State: ${stateName}<br/>
+                        ${hasResults ? `ZIPs in results: ${countyZips.length}` : 'No ZIPs in search results'}
+                      `);
+
+                      // Click handler to select county
+                      layer.on('click', () => {
+                        setSelectedCountyBoundary({ name: countyName, state: stateName });
+                        // Load ZIP boundaries for this county
+                        if (hasResults) {
+                          const countyZipCodes = countyZips.map(z => z.zipCode);
+                          loadBoundariesForSearchResults(countyZipCodes);
+                        }
+                      });
                     }
                   }}
                 />
@@ -2786,32 +2839,117 @@ const GeoApplication = () => {
               {/* ZIP Boundaries Layer */}
               {showZipBoundaries && zipBoundariesData && (
                 <GeoJSON
-                  key={`zip-boundaries-${zipBoundariesData.features.length}`} // Re-render when features count changes
+                  key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}`} // Re-render when features count or focus changes
                   data={zipBoundariesData}
-                  style={{
-                    color: '#dc2626',
-                    weight: 1,
-                    opacity: 0.7,
-                    fillOpacity: 0.05
+                  style={(feature) => {
+                    const zipCode = feature.properties?.zipcode;
+                    const isInResults = feature.properties?.inSearchResults;
+                    const isFocused = zipCode === focusedZipCode;
+                    const isAdditional = feature.properties?.isAdditional;
+
+                    // Different styles based on status
+                    if (isFocused) {
+                      return {
+                        color: '#ff0000',
+                        weight: 3,
+                        opacity: 1,
+                        fillOpacity: 0.2,
+                        fillColor: '#dc2626'
+                      };
+                    } else if (isInResults) {
+                      return {
+                        color: '#dc2626',
+                        weight: 1.5,
+                        opacity: 0.8,
+                        fillOpacity: 0.1,
+                        fillColor: '#dc2626'
+                      };
+                    } else if (isAdditional) {
+                      return {
+                        color: '#6b7280', // Gray for additional/clickable
+                        weight: 1,
+                        opacity: 0.6,
+                        fillOpacity: 0.05,
+                        fillColor: '#6b7280',
+                        dashArray: '3, 3' // Dashed border
+                      };
+                    } else {
+                      return {
+                        color: '#9ca3af',
+                        weight: 1,
+                        opacity: 0.5,
+                        fillOpacity: 0.02
+                      };
+                    }
                   }}
                   onEachFeature={(feature, layer) => {
-                    if (feature.properties && feature.properties.zipcode) {
-                      layer.bindPopup(`<strong>ZIP: ${feature.properties.zipcode}</strong>`);
+                    const zipCode = feature.properties?.zipcode;
+                    const isInResults = feature.properties?.inSearchResults;
+
+                    if (zipCode) {
+                      // Create popup content with add button if not in results
+                      const popupContent = document.createElement('div');
+                      popupContent.innerHTML = `
+                        <div style="min-width: 150px;">
+                          <strong>ZIP: ${zipCode}</strong><br/>
+                          ${!isInResults ? `
+                            <button
+                              id="add-zip-${zipCode}"
+                              style="margin-top: 8px; padding: 4px 8px; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                            >
+                              Add to Results
+                            </button>
+                          ` : '<span style="color: green;">✓ In Results</span>'}
+                        </div>
+                      `;
+
+                      layer.bindPopup(popupContent);
+
+                      // Add click handler for the add button
+                      layer.on('popupopen', () => {
+                        const addButton = document.getElementById(`add-zip-${zipCode}`);
+                        if (addButton) {
+                          addButton.addEventListener('click', () => {
+                            // Add ZIP to results
+                            const newZip = {
+                              id: zipResults.length + 1,
+                              zipCode: zipCode,
+                              city: feature.properties.city || 'Unknown',
+                              county: feature.properties.county || 'Unknown',
+                              state: feature.properties.state_fips || 'Unknown',
+                              lat: feature.properties.lat || 0,
+                              lng: feature.properties.lng || 0,
+                              latitude: feature.properties.lat || 0,
+                              longitude: feature.properties.lng || 0,
+                              area: 0,
+                              overlap: 0,
+                              addedManually: true
+                            };
+                            setZipResults(prev => [...prev, newZip]);
+                            layer.closePopup();
+                            // Reload boundaries to update styling
+                            loadBoundariesForSearchResults();
+                          });
+                        }
+                      });
+
                       // Add hover effect
                       layer.on({
                         mouseover: (e) => {
-                          e.target.setStyle({
-                            weight: 2,
-                            color: '#ff0000',
-                            fillOpacity: 0.15
-                          });
+                          if (zipCode !== focusedZipCode) {
+                            e.target.setStyle({
+                              weight: isInResults ? 2.5 : 2,
+                              fillOpacity: isInResults ? 0.2 : 0.1
+                            });
+                          }
                         },
                         mouseout: (e) => {
-                          e.target.setStyle({
-                            weight: 1,
-                            color: '#dc2626',
-                            fillOpacity: 0.05
-                          });
+                          if (zipCode !== focusedZipCode) {
+                            e.target.setStyle({
+                              weight: isInResults ? 1.5 : 1,
+                              fillOpacity: isInResults ? 0.1 : 0.05
+                            });
+                          }
                         }
                       });
                     }
