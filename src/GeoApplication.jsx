@@ -389,8 +389,37 @@ const GeoApplication = () => {
         );
 
         if (data && data.features) {
-          setZipBoundariesData(data);
-          console.log(`Loaded ${data.features.length} ZIP boundaries for current viewport`);
+          setZipBoundariesData(prevData => {
+            // If no previous data, just return new data
+            if (!prevData || !prevData.features) {
+              console.log(`Loaded ${data.features.length} ZIP boundaries (initial load)`);
+              return data;
+            }
+
+            // Create a Set of existing ZIP codes for quick lookup
+            const existingZips = new Set(
+              prevData.features.map(f => f.properties?.zipcode)
+            );
+
+            // Filter out duplicates from new data
+            const newFeatures = data.features.filter(
+              feature => !existingZips.has(feature.properties?.zipcode)
+            );
+
+            // If we have new features, merge them
+            if (newFeatures.length > 0) {
+              const mergedData = {
+                ...data,
+                features: [...prevData.features, ...newFeatures]
+              };
+              console.log(`Added ${newFeatures.length} new ZIP boundaries (total: ${mergedData.features.length})`);
+              return mergedData;
+            }
+
+            // No new features, return existing data
+            console.log(`No new boundaries in viewport (total: ${prevData.features.length})`);
+            return prevData;
+          });
         }
       } catch (error) {
         console.error('Failed to load ZIP boundaries:', error);
@@ -2675,7 +2704,7 @@ const GeoApplication = () => {
               {/* ZIP Boundaries Layer */}
               {showZipBoundaries && zipBoundariesData && (
                 <GeoJSON
-                  key={JSON.stringify(currentViewport)} // Force re-render on viewport change
+                  key={`zip-boundaries-${zipBoundariesData.features.length}`} // Re-render when features count changes
                   data={zipBoundariesData}
                   style={{
                     color: '#dc2626',
@@ -2824,7 +2853,13 @@ const GeoApplication = () => {
                       <input
                         type="checkbox"
                         checked={showZipBoundaries}
-                        onChange={(e) => setShowZipBoundaries(e.target.checked)}
+                        onChange={(e) => {
+                          setShowZipBoundaries(e.target.checked);
+                          // Clear cached boundaries when toggled off
+                          if (!e.target.checked) {
+                            setZipBoundariesData(null);
+                          }
+                        }}
                         className="rounded"
                         disabled={loadingZipBoundaries}
                       />
@@ -2833,8 +2868,24 @@ const GeoApplication = () => {
                         {loadingZipBoundaries && (
                           <span className="inline-block animate-spin">⟳</span>
                         )}
+                        {zipBoundariesData && zipBoundariesData.features && (
+                          <span className="text-[10px] opacity-70">
+                            ({zipBoundariesData.features.length})
+                          </span>
+                        )}
                       </span>
                     </label>
+                    {showZipBoundaries && zipBoundariesData && zipBoundariesData.features && zipBoundariesData.features.length > 0 && (
+                      <button
+                        onClick={() => setZipBoundariesData(null)}
+                        className={`text-[10px] px-2 py-0.5 rounded ${
+                          isDarkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                        }`}
+                        title="Clear cached ZIP boundaries"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -4010,9 +4061,7 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
 
 // Header Mapping Modal Component
 const HeaderMappingModal = ({ isOpen, onClose, headers, previewData, columnMapping, setColumnMapping, onConfirm, isDarkMode, processingProgress }) => {
-  console.log('🔵 HeaderMappingModal render - isOpen:', isOpen, 'headers:', headers?.length);
   if (!isOpen) return null;
-  console.log('🟢 HeaderMappingModal IS RENDERING');
 
   const handleMappingChange = (header, value) => {
     setColumnMapping(prev => ({ ...prev, [header]: value }));
