@@ -15,16 +15,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get all unique state/state_code combinations
-    // Filter out null or empty values
-    const { data, error } = await supabase
-      .from('zipcodes')
-      .select('state_code, state')
-      .not('state_code', 'is', null)
-      .not('state', 'is', null)
-      .neq('state_code', '')
-      .neq('state', '')
-      .order('state');
+    // Use materialized view for instant results (if available)
+    // Otherwise fallback to spatial table
+    let { data, error } = await supabase
+      .from('states_view')
+      .select('code, name');
+
+    // If view doesn't exist, query the spatial table
+    if (error || !data) {
+      console.log('Using fallback query for states');
+      const result = await supabase
+        .from('zipcodes_spatial')
+        .select('state_code, state')
+        .not('state_code', 'is', null)
+        .not('state', 'is', null)
+        .neq('state_code', '')
+        .neq('state', '')
+        .order('state');
+
+      data = result.data;
+      error = result.error;
+    }
 
     if (error) throw error;
 
