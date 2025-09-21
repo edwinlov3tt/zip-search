@@ -2369,8 +2369,8 @@ const GeoApplication = () => {
               // Radius Search Controls - Mobile Optimized
               <>
                 <div className="flex flex-row items-center gap-2 sm:gap-3">
-                  {/* Search Input - 70% width on mobile */}
-                  <div className="relative flex-[7] sm:flex-initial">
+                  {/* Search Input - flexible width */}
+                  <div className="relative flex-1 sm:flex-initial">
                     <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 z-10 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
                   <input
                     type="text"
@@ -2439,8 +2439,8 @@ const GeoApplication = () => {
                   )}
                   </div>
 
-                  {/* Integrated Radius Input with embedded "miles" - 30% width on mobile */}
-                  <div className={`relative flex-[3] sm:flex-initial ${isSearchMode ? 'animate-pulse' : ''}`}>
+                  {/* Integrated Radius Input with embedded "miles" */}
+                  <div className={`relative ${isSearchMode ? 'animate-pulse' : ''}`}>
                     <input
                       type="number"
                       min="1"
@@ -2467,9 +2467,31 @@ const GeoApplication = () => {
                       miles
                     </span>
                   </div>
+
+                  {/* Search/Reset Button - on same row */}
+                  <button
+                    onClick={isSearchMode ? handleSearch : handleReset}
+                    disabled={isLoading}
+                    className={`py-2 px-4 sm:px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors whitespace-nowrap ${
+                      isSearchMode
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : isDarkMode
+                          ? 'bg-gray-600 text-white hover:bg-gray-500'
+                          : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : isSearchMode ? (
+                      <Search className="h-4 w-4" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    <span className="hidden sm:inline">{isLoading ? 'Searching...' : isSearchMode ? 'Search' : 'Reset'}</span>
+                  </button>
                 </div>
 
-                {/* Instructions in separate row */}
+                {/* Instructions in separate row below */}
                 {isSearchMode && (
                   <div className="w-full">
                     <div className={`text-xs text-center px-3 py-2 rounded ${
@@ -2596,61 +2618,40 @@ const GeoApplication = () => {
                 )}
               </>
             ) : null}
-
-            {searchMode === 'radius' && (
+            {searchMode === 'polygon' && (
               <div className="flex justify-center mt-1">
                 <button
-                  onClick={isSearchMode ? handleSearch : handleReset}
-                  disabled={isLoading}
-                  className={`py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors ${
-                    isSearchMode
-                      ? 'bg-red-600 text-white hover:bg-red-700'
-                      : isDarkMode
-                        ? 'bg-gray-600 text-white hover:bg-gray-500'
-                        : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  {isLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  ) : isSearchMode ? (
-                    <Search className="h-4 w-4" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" />
-                  )}
-                  <span>{isLoading ? 'Searching...' : isSearchMode ? 'Search' : 'Reset'}</span>
-                </button>
-              </div>
-            )}
-            {searchMode === 'polygon' && (
-              <button
-                onClick={handleReset}
-                disabled={isLoading || drawnShapes.length === 0}
+                  onClick={handleReset}
+                  disabled={isLoading || drawnShapes.length === 0}
                 className={`py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors ${
                   drawnShapes.length === 0
                     ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                     : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
               >
-                <RotateCcw className="h-4 w-4" />
-                <span>Reset</span>
-              </button>
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Reset</span>
+                </button>
+              </div>
             )}
             {searchMode === 'hierarchy' && (
-              <button
-                onClick={handleReset}
-                disabled={isLoading || !selectedState}
+              <div className="flex justify-center mt-1">
+                <button
+                  onClick={handleReset}
+                  disabled={isLoading || !selectedState}
                 className={`py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-colors ${
                   !selectedState
                     ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                     : 'bg-gray-600 text-white hover:bg-gray-700'
                 }`}
               >
-                <RotateCcw className="h-4 w-4" />
-                <span>Reset</span>
-              </button>
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Reset</span>
+                </button>
+              </div>
             )}
+            </div>
           </div>
-        </div>
 
           {/* Map Area */}
           <div
