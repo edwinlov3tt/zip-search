@@ -1,32 +1,8 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.warn('⚠️  Supabase credentials not found in environment variables');
-  console.log('Please set SUPABASE_URL and SUPABASE_ANON_KEY');
-}
-
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Enable CORS - allow all origins for public API
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  credentials: false
-}));
-app.use(express.json());
-
-// Handle preflight requests
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-  res.sendStatus(200);
-});
 
 // Helper function to calculate distance between two points
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -40,29 +16,16 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Helper function to check if point is inside polygon
-function isPointInPolygon(point, polygon) {
-  const x = point.longitude;
-  const y = point.latitude;
-  let inside = false;
+export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng;
-    const yi = polygon[i].lat;
-    const xj = polygon[j].lng;
-    const yj = polygon[j].lat;
-
-    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
-      inside = !inside;
-    }
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
-  return inside;
-}
 
-// API Routes
-
-// Search zip codes by various criteria
-app.get('/api/search', async (req, res) => {
   try {
     const {
       query,
@@ -72,7 +35,6 @@ app.get('/api/search', async (req, res) => {
       state,
       county,
       city,
-      polygon,
       limit = 100,
       offset = 0
     } = req.query;
@@ -122,7 +84,7 @@ app.get('/api/search', async (req, res) => {
 
     if (error) throw error;
 
-    // Apply client-side filtering for radius and polygon searches
+    // Apply client-side filtering for radius search
     let results = data || [];
 
     // Radius search (done client-side due to complexity)
@@ -141,21 +103,6 @@ app.get('/api/search', async (req, res) => {
       });
     }
 
-    // Polygon search (done client-side)
-    if (polygon) {
-      try {
-        const polygonPoints = JSON.parse(polygon);
-        results = results.filter(zip =>
-          isPointInPolygon(
-            { latitude: parseFloat(zip.latitude), longitude: parseFloat(zip.longitude) },
-            polygonPoints
-          )
-        );
-      } catch (e) {
-        return res.status(400).json({ error: 'Invalid polygon format' });
-      }
-    }
-
     // Format response to match existing API
     const formattedResults = results.map(zip => ({
       zipcode: zip.zipcode,
@@ -168,7 +115,7 @@ app.get('/api/search', async (req, res) => {
       longitude: parseFloat(zip.longitude)
     }));
 
-    res.json({
+    res.status(200).json({
       results: formattedResults,
       total: count || results.length,
       offset: parseInt(offset),
@@ -179,180 +126,4 @@ app.get('/api/search', async (req, res) => {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Search failed', details: error.message });
   }
-});
-
-// Get all states
-app.get('/api/states', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('zipcodes')
-      .select('state_code, state')
-      .not('state_code', 'is', null)
-      .order('state');
-
-    if (error) throw error;
-
-    // Remove duplicates
-    const uniqueStates = Array.from(
-      new Map(data.map(item => [item.state_code, {
-        code: item.state_code,
-        name: item.state
-      }])).values()
-    );
-
-    res.json(uniqueStates);
-  } catch (error) {
-    console.error('States query error:', error);
-    res.status(500).json({ error: 'Failed to fetch states' });
-  }
-});
-
-// Get counties by state
-app.get('/api/counties', async (req, res) => {
-  try {
-    const { state } = req.query;
-
-    let query = supabase
-      .from('zipcodes')
-      .select('county')
-      .not('county', 'is', null);
-
-    if (state) {
-      query = query.or(
-        `state_code.eq.${state.toUpperCase()},state.ilike.${state}`
-      );
-    }
-
-    const { data, error } = await query.order('county');
-
-    if (error) throw error;
-
-    // Remove duplicates
-    const uniqueCounties = Array.from(
-      new Set(data.map(item => item.county))
-    ).map(name => ({ name }));
-
-    res.json(uniqueCounties);
-  } catch (error) {
-    console.error('Counties query error:', error);
-    res.status(500).json({ error: 'Failed to fetch counties' });
-  }
-});
-
-// Get cities by state/county
-app.get('/api/cities', async (req, res) => {
-  try {
-    const { state, county } = req.query;
-
-    let query = supabase
-      .from('zipcodes')
-      .select('city')
-      .not('city', 'is', null);
-
-    if (state) {
-      query = query.or(
-        `state_code.eq.${state.toUpperCase()},state.ilike.${state}`
-      );
-    }
-
-    if (county) {
-      query = query.ilike('county', county);
-    }
-
-    const { data, error } = await query.order('city');
-
-    if (error) throw error;
-
-    // Remove duplicates
-    const uniqueCities = Array.from(
-      new Set(data.map(item => item.city))
-    ).map(name => ({ name }));
-
-    res.json(uniqueCities);
-  } catch (error) {
-    console.error('Cities query error:', error);
-    res.status(500).json({ error: 'Failed to fetch cities' });
-  }
-});
-
-// Get zip code details
-app.get('/api/zipcode/:zip', async (req, res) => {
-  try {
-    const { zip } = req.params;
-
-    const { data, error } = await supabase
-      .from('zipcodes')
-      .select('*')
-      .eq('zipcode', zip)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Zip code not found' });
-      }
-      throw error;
-    }
-
-    // Format response to match existing API
-    const formattedResult = {
-      zipcode: data.zipcode,
-      city: data.city,
-      state: data.state,
-      stateCode: data.state_code,
-      county: data.county,
-      countyCode: data.county_code,
-      latitude: parseFloat(data.latitude),
-      longitude: parseFloat(data.longitude)
-    };
-
-    res.json(formattedResult);
-  } catch (error) {
-    console.error('Zipcode query error:', error);
-    res.status(500).json({ error: 'Failed to fetch zip code' });
-  }
-});
-
-// Health check
-app.get('/api/health', async (req, res) => {
-  try {
-    // Test database connection
-    const { count, error } = await supabase
-      .from('zipcodes')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) throw error;
-
-    res.json({
-      status: 'OK',
-      database: 'connected',
-      provider: 'Supabase',
-      totalZipCodes: count || 0,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'ERROR',
-      database: 'disconnected',
-      provider: 'Supabase',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// For local development
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`🚀 Zip Search API (Supabase) running on http://localhost:${PORT}`);
-    console.log(`🔍 API endpoints:`);
-    console.log(`   GET /api/search - Search zip codes`);
-    console.log(`   GET /api/states - Get all states`);
-    console.log(`   GET /api/counties - Get counties`);
-    console.log(`   GET /api/cities - Get cities`);
-    console.log(`   GET /api/zipcode/:zip - Get zip details`);
-    console.log(`   GET /api/health - Health check`);
-  });
 }
-
-// Export for Vercel
-module.exports = app;
