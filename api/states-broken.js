@@ -15,40 +15,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get all unique state/state_code combinations
-    // Filter out null or empty values
     const { data, error } = await supabase
       .from('zipcodes')
       .select('state_code, state')
       .not('state_code', 'is', null)
-      .not('state', 'is', null)
-      .neq('state_code', '')
-      .neq('state', '')
       .order('state');
 
     if (error) throw error;
 
-    // Remove duplicates using Map to ensure unique state_codes
-    const stateMap = new Map();
-
-    data.forEach(item => {
-      if (item.state_code && item.state && !stateMap.has(item.state_code)) {
-        stateMap.set(item.state_code, {
-          code: item.state_code,
-          name: item.state
-        });
-      }
-    });
-
-    const uniqueStates = Array.from(stateMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
+    // Remove duplicates
+    const uniqueStates = Array.from(
+      new Map(data.map(item => [item.state_code, {
+        code: item.state_code,
+        name: item.state
+      }])).values()
     );
-
-    console.log(`Found ${uniqueStates.length} unique states`);
 
     res.status(200).json(uniqueStates);
   } catch (error) {
     console.error('States query error:', error);
-    res.status(500).json({ error: 'Failed to fetch states', details: error.message });
+    res.status(500).json({ error: 'Failed to fetch states' });
   }
 }

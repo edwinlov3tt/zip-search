@@ -16,6 +16,43 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Helper function to check if point is inside polygon
+function isPointInPolygon(point, polygon) {
+  const x = point.longitude;
+  const y = point.latitude;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng;
+    const yi = polygon[i].lat;
+    const xj = polygon[j].lng;
+    const yj = polygon[j].lat;
+
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// Calculate bounding box for radius search
+function getBoundingBox(lat, lng, radiusMiles) {
+  const latRadian = lat * Math.PI / 180;
+  const degLatKm = 110.574; // km per degree latitude
+  const degLonKm = 111.320 * Math.cos(latRadian); // km per degree longitude at this latitude
+  const radiusKm = radiusMiles * 1.60934; // convert miles to km
+
+  const deltaLat = radiusKm / degLatKm;
+  const deltaLon = radiusKm / degLonKm;
+
+  return {
+    minLat: lat - deltaLat,
+    maxLat: lat + deltaLat,
+    minLng: lng - deltaLon,
+    maxLng: lng + deltaLon
+  };
+}
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -32,6 +69,7 @@ export default async function handler(req, res) {
       lat,
       lng,
       radius,
+      polygon,
       state,
       county,
       city,
@@ -39,13 +77,48 @@ export default async function handler(req, res) {
       offset = 0
     } = req.query;
 
+    console.log('Search params:', { query, lat, lng, radius, polygon, state, county, city, limit, offset });
+
     // Start with base query
     let supabaseQuery = supabase
       .from('zipcodes')
-      .select('*', { count: 'exact' });
+      .select('*');
+
+    // For radius search, get bounding box to limit initial query
+    if (lat && lng && radius) {
+      const centerLat = parseFloat(lat);
+      const centerLng = parseFloat(lng);
+      const radiusMiles = parseFloat(radius);
+      const bbox = getBoundingBox(centerLat, centerLng, radiusMiles * 1.5); // 1.5x for safety margin
+
+      supabaseQuery = supabaseQuery
+        .gte('latitude', bbox.minLat)
+        .lte('latitude', bbox.maxLat)
+        .gte('longitude', bbox.minLng)
+        .lte('longitude', bbox.maxLng);
+    }
+
+    // For polygon search, get bounding box of polygon
+    else if (polygon) {
+      try {
+        const polygonPoints = JSON.parse(polygon);
+        if (polygonPoints && polygonPoints.length > 0) {
+          const lats = polygonPoints.map(p => p.lat);
+          const lngs = polygonPoints.map(p => p.lng);
+
+          supabaseQuery = supabaseQuery
+            .gte('latitude', Math.min(...lats))
+            .lte('latitude', Math.max(...lats))
+            .gte('longitude', Math.min(...lngs))
+            .lte('longitude', Math.max(...lngs));
+        }
+      } catch (e) {
+        console.error('Invalid polygon format:', e);
+      }
+    }
 
     // Text search
-    if (query) {
+    else if (query) {
       const searchTerm = `%${query}%`;
       // Check if it's a zip code search
       if (/^\d/.test(query)) {
@@ -58,42 +131,44 @@ export default async function handler(req, res) {
     }
 
     // State filtering
-    if (state) {
+    if (state && !radius && !polygon) {
       supabaseQuery = supabaseQuery.or(
         `state_code.eq.${state.toUpperCase()},state.ilike.${state}`
       );
     }
 
     // County filtering
-    if (county) {
+    if (county && !radius && !polygon) {
       supabaseQuery = supabaseQuery.ilike('county', `%${county}%`);
     }
 
     // City filtering
-    if (city) {
+    if (city && !radius && !polygon) {
       supabaseQuery = supabaseQuery.ilike('city', `%${city}%`);
     }
 
-    // Order and pagination
-    supabaseQuery = supabaseQuery
-      .order('zipcode')
-      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    // For spatial queries, get more records
+    const fetchLimit = (radius || polygon) ? 5000 : parseInt(limit);
 
-    // Execute query
-    const { data, error, count } = await supabaseQuery;
+    // Order by zipcode
+    supabaseQuery = supabaseQuery.order('zipcode');
+
+    // Execute query - get all matching records for spatial filtering
+    const { data, error } = await supabaseQuery;
 
     if (error) throw error;
 
-    // Apply client-side filtering for radius search
     let results = data || [];
+    console.log(`Initial query returned ${results.length} records`);
 
-    // Radius search (done client-side due to complexity)
+    // Apply radius filtering
     if (lat && lng && radius) {
       const centerLat = parseFloat(lat);
       const centerLng = parseFloat(lng);
       const radiusMiles = parseFloat(radius);
 
       results = results.filter(zip => {
+        if (!zip.latitude || !zip.longitude) return false;
         const distance = calculateDistance(
           centerLat, centerLng,
           parseFloat(zip.latitude),
@@ -101,10 +176,35 @@ export default async function handler(req, res) {
         );
         return distance <= radiusMiles;
       });
+
+      console.log(`After radius filter: ${results.length} records`);
     }
 
-    // Format response to match existing API
-    const formattedResults = results.map(zip => ({
+    // Apply polygon filtering
+    if (polygon) {
+      try {
+        const polygonPoints = JSON.parse(polygon);
+        results = results.filter(zip => {
+          if (!zip.latitude || !zip.longitude) return false;
+          return isPointInPolygon(
+            { latitude: parseFloat(zip.latitude), longitude: parseFloat(zip.longitude) },
+            polygonPoints
+          );
+        });
+        console.log(`After polygon filter: ${results.length} records`);
+      } catch (e) {
+        console.error('Polygon filter error:', e);
+      }
+    }
+
+    // Apply pagination to filtered results
+    const total = results.length;
+    const startIndex = parseInt(offset);
+    const endIndex = Math.min(startIndex + parseInt(limit), total);
+    const paginatedResults = results.slice(startIndex, endIndex);
+
+    // Format response
+    const formattedResults = paginatedResults.map(zip => ({
       zipcode: zip.zipcode,
       city: zip.city,
       state: zip.state,
@@ -117,11 +217,12 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       results: formattedResults,
-      total: count || results.length,
-      offset: parseInt(offset),
+      total: total,
+      offset: startIndex,
       limit: parseInt(limit),
-      hasMore: parseInt(offset) + results.length < (count || results.length)
+      hasMore: endIndex < total
     });
+
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Search failed', details: error.message });
