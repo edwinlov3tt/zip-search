@@ -363,6 +363,13 @@ const GeoApplication = () => {
     }
   }, [showZipBoundaries, currentViewport]);
 
+  // Load ZIP boundaries for search results when available
+  useEffect(() => {
+    if (showZipBoundaries && searchPerformed && zipResults.length > 0) {
+      loadBoundariesForSearchResults();
+    }
+  }, [showZipBoundaries, zipResults, searchPerformed]);
+
 
   const loadCountyBoundaries = async () => {
     try {
@@ -444,6 +451,59 @@ const GeoApplication = () => {
   const handleViewportChange = useCallback((viewport) => {
     setCurrentViewport(viewport);
   }, []);
+
+  // Load boundaries specifically for search results
+  const loadBoundariesForSearchResults = async () => {
+    if (!zipResults || zipResults.length === 0) return;
+
+    // Extract unique ZIP codes from search results
+    const uniqueZipCodes = [...new Set(zipResults.map(result => result.zipcode))];
+
+    console.log(`Loading boundaries for ${uniqueZipCodes.length} ZIP codes from search results`);
+    setLoadingZipBoundaries(true);
+
+    try {
+      // Fetch boundaries for search result ZIPs first
+      const searchResultBoundaries = await zipBoundariesService.getMultipleZipBoundaries(
+        uniqueZipCodes.slice(0, 50), // Limit to first 50 to avoid overwhelming
+        true
+      );
+
+      if (searchResultBoundaries && searchResultBoundaries.features.length > 0) {
+        setZipBoundariesData(prevData => {
+          // If no previous data, just return new data
+          if (!prevData || !prevData.features) {
+            console.log(`Loaded ${searchResultBoundaries.features.length} search result boundaries`);
+            return searchResultBoundaries;
+          }
+
+          // Merge with existing data
+          const existingZips = new Set(
+            prevData.features.map(f => f.properties?.zipcode)
+          );
+
+          const newFeatures = searchResultBoundaries.features.filter(
+            feature => !existingZips.has(feature.properties?.zipcode)
+          );
+
+          if (newFeatures.length > 0) {
+            const mergedData = {
+              ...searchResultBoundaries,
+              features: [...newFeatures, ...prevData.features] // Put new features first
+            };
+            console.log(`Added ${newFeatures.length} search result boundaries (total: ${mergedData.features.length})`);
+            return mergedData;
+          }
+
+          return prevData;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load search result boundaries:', error);
+    } finally {
+      setLoadingZipBoundaries(false);
+    }
+  };
 
 
   // Helper function to generate removal key
@@ -837,6 +897,12 @@ const GeoApplication = () => {
       // Update search history
       if (searchTerm && !searchHistory.includes(searchTerm)) {
         setSearchHistory(prev => [searchTerm, ...prev.slice(0, 9)]);
+      }
+
+      // Automatically enable ZIP boundaries for radius/polygon searches
+      if ((searchMode === 'radius' || searchMode === 'polygon') && transformedZips.length > 0) {
+        console.log('Auto-enabling ZIP boundaries for search results');
+        setShowZipBoundaries(true);
       }
 
     } catch (error) {
@@ -2041,6 +2107,12 @@ const GeoApplication = () => {
         // Center map on clicked location
         setMapCenter([lat, lng]);
         setMapZoom(11);
+
+        // Automatically enable ZIP boundaries for radius search from map click
+        if (transformedZips.length > 0) {
+          console.log('Auto-enabling ZIP boundaries for map click radius search');
+          setShowZipBoundaries(true);
+        }
 
       } catch (error) {
         console.error('Search failed:', error);

@@ -61,6 +61,64 @@ class ZipBoundariesService {
   }
 
   /**
+   * Get boundaries for multiple specific ZIP codes
+   * @param {Array<string>} zipCodes - Array of ZIP codes
+   * @param {boolean} simplified - Whether to use simplified geometry
+   * @returns {Promise<Object>} GeoJSON FeatureCollection
+   */
+  async getMultipleZipBoundaries(zipCodes, simplified = true) {
+    if (!zipCodes || zipCodes.length === 0) {
+      return {
+        type: 'FeatureCollection',
+        features: []
+      };
+    }
+
+    console.log(`Fetching boundaries for ${zipCodes.length} specific ZIP codes`);
+
+    const features = [];
+    const errors = [];
+
+    // Fetch boundaries in parallel (max 10 at a time to avoid overwhelming the API)
+    const batchSize = 10;
+    for (let i = 0; i < zipCodes.length; i += batchSize) {
+      const batch = zipCodes.slice(i, i + batchSize);
+
+      const batchPromises = batch.map(async (zipCode) => {
+        try {
+          const boundary = await this.getZipBoundary(zipCode, simplified);
+          return boundary;
+        } catch (error) {
+          console.warn(`Failed to fetch boundary for ZIP ${zipCode}:`, error.message);
+          errors.push(zipCode);
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+
+      // Add successful results to features array
+      batchResults.forEach(result => {
+        if (result) {
+          features.push(result);
+        }
+      });
+    }
+
+    console.log(`Successfully fetched ${features.length} ZIP boundaries (${errors.length} failed)`);
+
+    return {
+      type: 'FeatureCollection',
+      features: features,
+      properties: {
+        requested: zipCodes.length,
+        loaded: features.length,
+        failed: errors
+      }
+    };
+  }
+
+  /**
    * Get boundaries for current viewport
    * @param {Object} bounds - Map bounds {north, south, east, west}
    * @param {number} limit - Maximum number of boundaries to return
