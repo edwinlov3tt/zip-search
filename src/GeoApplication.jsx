@@ -2199,13 +2199,17 @@ const GeoApplication = () => {
           const deltaY = startY - e.clientY;
           const viewportHeight = window.innerHeight;
           const deltaPercent = (deltaY / viewportHeight) * 100;
-          const newHeight = Math.min(90, Math.max(20, startHeight + deltaPercent));
+          const newHeight = Math.min(90, Math.max(10, startHeight + deltaPercent)); // Allow dragging down to 10% to trigger auto-collapse
           setDrawerHeight(Math.round(newHeight * 10) / 10); // Round to 1 decimal for smoother updates
         });
       }
     };
 
     const handleMouseUp = () => {
+      // Auto-collapse if dragged below 20%
+      if (drawerHeight < 20) {
+        setDrawerState('collapsed');
+      }
       setIsResizing(false);
       setStartY(null);
       setStartHeight(null);
