@@ -175,6 +175,7 @@ const GeoApplication = () => {
   const [currentViewport, setCurrentViewport] = useState(null);
   const [selectedCountyBoundary, setSelectedCountyBoundary] = useState(null);
   const [focusedZipCode, setFocusedZipCode] = useState(null);
+  const [showOnlyFocusedBoundary, setShowOnlyFocusedBoundary] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showCustomExport, setShowCustomExport] = useState(false);
@@ -231,20 +232,37 @@ const GeoApplication = () => {
     if (type === 'zip') {
       setMapZoom(13); // Close zoom for ZIP codes
       setFocusedZipCode(result.zipCode); // Highlight this ZIP
+      setShowOnlyFocusedBoundary(true); // Only show this ZIP's boundary
 
       // Auto-enable ZIP boundaries and load if not already shown
       if (!showZipBoundaries) {
         setShowZipBoundaries(true);
       }
 
-      // Load boundary for this specific ZIP if not already loaded
-      if (zipBoundariesData && !zipBoundariesData.features.find(f => f.properties?.zipcode === result.zipCode)) {
-        await loadBoundariesForSearchResults([result.zipCode]);
+      // Load boundary for this specific ZIP
+      try {
+        const boundary = await zipBoundariesService.getZipBoundary(result.zipCode, true);
+        if (boundary) {
+          // Set only this boundary to be displayed
+          setZipBoundariesData({
+            type: 'FeatureCollection',
+            features: [{
+              ...boundary,
+              properties: {
+                ...boundary.properties,
+                inSearchResults: true
+              }
+            }]
+          });
+        }
+      } catch (error) {
+        console.error('Error loading ZIP boundary:', error);
       }
 
     } else if (type === 'city') {
       setMapZoom(11); // Medium zoom for cities
       setFocusedZipCode(null);
+      setShowOnlyFocusedBoundary(false); // Show all boundaries for city
 
       // Show ZIP boundaries for all ZIPs in this city
       if (!showZipBoundaries) {
@@ -254,6 +272,7 @@ const GeoApplication = () => {
     } else if (type === 'county') {
       setMapZoom(9); // Wider zoom for counties
       setFocusedZipCode(null);
+      setShowOnlyFocusedBoundary(false); // Show all boundaries for county
 
       // Show county border and all ZIP boundaries within
       setShowCountyBorders(true);
@@ -832,6 +851,8 @@ const GeoApplication = () => {
     setApiError(null);
     setCurrentPage(0);
     setIsSearchMode(false); // Switch to reset mode
+    setShowOnlyFocusedBoundary(false); // Show all boundaries for search results
+    setFocusedZipCode(null); // Clear focus
 
     try {
       let searchParams = { limit: 2000, offset: 0 }; // Increased limit to show more results
@@ -1120,6 +1141,8 @@ const GeoApplication = () => {
     setDrawnShapes([]);
     setRemovedItems(new Set());
     setSelectedResult(null); // Clear selection
+    setFocusedZipCode(null); // Clear focused ZIP
+    setShowOnlyFocusedBoundary(false); // Reset to show all boundaries
     // If on Excluded tab, switch back to Zips tab
     if (activeTab === 'excluded') {
       setActiveTab('zips');
@@ -2848,12 +2871,13 @@ const GeoApplication = () => {
                     }
                   }}
                   eventHandlers={{
-                    click: () => {
-                      setSelectedResult({ type: 'zip', id: result.id });
+                    click: async () => {
                       // Auto-switch to zips tab if not already selected
                       if (activeTab !== 'zips') {
                         setActiveTab('zips');
                       }
+                      // Call the same handler as drawer click to show only this ZIP's boundary
+                      await handleResultSelect('zip', result);
                     }
                   }}
                 >
@@ -3019,8 +3043,11 @@ const GeoApplication = () => {
               {/* ZIP Boundaries Layer */}
               {showZipBoundaries && zipBoundariesData && (
                 <GeoJSON
-                  key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}`} // Re-render when features count or focus changes
-                  data={zipBoundariesData}
+                  key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}`} // Re-render when features count or focus changes
+                  data={showOnlyFocusedBoundary && focusedZipCode ? {
+                    ...zipBoundariesData,
+                    features: zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode)
+                  } : zipBoundariesData}
                   style={(feature) => {
                     const zipCode = feature.properties?.zipcode;
                     const isInResults = feature.properties?.inSearchResults;
