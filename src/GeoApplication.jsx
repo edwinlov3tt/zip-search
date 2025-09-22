@@ -199,6 +199,10 @@ const GeoApplication = () => {
   // Map layer selector state
   const [showMapLayers, setShowMapLayers] = useState(false);
 
+  // Toast notification state
+  const [toastMessage, setToastMessage] = useState(null);
+  const [toastType, setToastType] = useState('success'); // 'success', 'error', 'info'
+
   // Selection state for map-drawer synchronization
   const [selectedResult, setSelectedResult] = useState(null); // { type: 'zip', id: 123 }
   const tableContainerRef = useRef(null);
@@ -2363,6 +2367,21 @@ const GeoApplication = () => {
         </div>
       </header>
 
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${
+          toastType === 'success'
+            ? 'bg-green-600 text-white'
+            : toastType === 'error'
+            ? 'bg-red-600 text-white'
+            : 'bg-blue-600 text-white'
+        }`}>
+          {toastType === 'success' && <Check className="h-5 w-5" />}
+          {toastType === 'error' && <X className="h-5 w-5" />}
+          <span className="font-medium">{toastMessage}</span>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
           {/* Floating Search Container - responsive and mobile-friendly */}
@@ -2664,8 +2683,35 @@ const GeoApplication = () => {
                 : '100%'
             }}
           >
-            {/* Collapsible Map Type Controls - Below Search Bar */}
-            <div className={`absolute top-20 left-4 z-[999] transition-all duration-300 ${
+            {/* Map Type Controls - Desktop: Static on right, Mobile/Tablet: Collapsible on left */}
+            {/* Desktop version - always visible */}
+            <div className={`hidden lg:block absolute top-4 right-4 z-[999] ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border p-2`}>
+              <div className="space-y-1">
+                {[
+                  { type: 'street', label: 'Street', icon: MapIcon },
+                  { type: 'satellite', label: 'Satellite', icon: Globe },
+                  { type: 'terrain', label: 'Terrain', icon: Layers }
+                ].map(({ type, label, icon: Icon }) => (
+                  <button
+                    key={type}
+                    onClick={() => setMapType(type)}
+                    className={`w-full p-2 text-left rounded flex items-center space-x-2 transition-colors ${
+                      mapType === type
+                        ? 'bg-red-600 text-white'
+                        : isDarkMode
+                          ? 'hover:bg-gray-700 text-gray-300'
+                          : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-sm">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile/Tablet version - collapsible */}
+            <div className={`lg:hidden absolute top-20 left-4 z-[999] transition-all duration-300 ${
               showMapLayers ? 'translate-x-0' : '-translate-x-[calc(100%-40px)]'
             }`}>
               <div className={`flex items-start`}>
@@ -3078,26 +3124,92 @@ const GeoApplication = () => {
                       layer.on('popupopen', () => {
                         const addButton = document.getElementById(`add-zip-${zipCode}`);
                         if (addButton) {
-                          addButton.addEventListener('click', () => {
-                            // Add ZIP to results
-                            const newZip = {
-                              id: zipResults.length + 1,
-                              zipCode: zipCode,
-                              city: feature.properties.city || 'Unknown',
-                              county: feature.properties.county || 'Unknown',
-                              state: feature.properties.state_fips || 'Unknown',
-                              lat: feature.properties.lat || 0,
-                              lng: feature.properties.lng || 0,
-                              latitude: feature.properties.lat || 0,
-                              longitude: feature.properties.lng || 0,
-                              area: 0,
-                              overlap: 0,
-                              addedManually: true
-                            };
-                            setZipResults(prev => [...prev, newZip]);
-                            layer.closePopup();
-                            // Reload boundaries to update styling
-                            loadBoundariesForSearchResults();
+                          addButton.addEventListener('click', async () => {
+                            try {
+                              if (isExcluded) {
+                                // Remove from excluded items
+                                const key = getRemovalKey('zip', { zipCode });
+                                setRemovedItems(prev => {
+                                  const newSet = new Set(prev);
+                                  newSet.delete(key);
+                                  return newSet;
+                                });
+
+                                // Show success message
+                                setToastMessage(`ZIP ${zipCode} added back to results`);
+                                setToastType('success');
+                                setTimeout(() => setToastMessage(null), 3000);
+                              } else {
+                                // Get ZIP details from API if not in results
+                                const response = await ZipCodeService.search({
+                                  zipcode: zipCode,
+                                  limit: 1
+                                });
+
+                                if (response.results && response.results.length > 0) {
+                                  const zipData = response.results[0];
+                                  const newZip = {
+                                    id: Date.now(), // Use timestamp for unique ID
+                                    zipCode: zipData.zipcode,
+                                    city: zipData.city,
+                                    county: zipData.county,
+                                    state: zipData.stateCode,
+                                    lat: zipData.latitude,
+                                    lng: zipData.longitude,
+                                    latitude: zipData.latitude,
+                                    longitude: zipData.longitude,
+                                    area: 0,
+                                    overlap: 0,
+                                    addedManually: true
+                                  };
+
+                                  // Add to results
+                                  setZipResults(prev => [...prev, newZip]);
+
+                                  // Update aggregated results
+                                  const allZips = [...zipResults, newZip];
+                                  updateAggregatedResults(allZips);
+
+                                  // Show success message
+                                  setToastMessage(`ZIP ${zipCode} added to results`);
+                                  setToastType('success');
+                                  setTimeout(() => setToastMessage(null), 3000);
+                                } else {
+                                  // Show error if ZIP not found
+                                  setToastMessage(`Failed to fetch details for ZIP ${zipCode}`);
+                                  setToastType('error');
+                                  setTimeout(() => setToastMessage(null), 3000);
+                                }
+                              }
+
+                              layer.closePopup();
+
+                              // Update boundaries to reflect new state
+                              if (zipBoundariesData) {
+                                const updatedFeatures = zipBoundariesData.features.map(f => {
+                                  if (f.properties?.zipcode === zipCode) {
+                                    return {
+                                      ...f,
+                                      properties: {
+                                        ...f.properties,
+                                        inSearchResults: true,
+                                        isAdditional: false
+                                      }
+                                    };
+                                  }
+                                  return f;
+                                });
+                                setZipBoundariesData({
+                                  ...zipBoundariesData,
+                                  features: updatedFeatures
+                                });
+                              }
+                            } catch (error) {
+                              console.error('Error adding ZIP:', error);
+                              setToastMessage(`Error adding ZIP ${zipCode}`);
+                              setToastType('error');
+                              setTimeout(() => setToastMessage(null), 3000);
+                            }
                           });
                         }
                       });
