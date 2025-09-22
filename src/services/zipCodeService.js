@@ -40,7 +40,8 @@ export class ZipCodeService {
 
   static async getStates() {
     if (USE_STATIC_DATA) {
-      return OptimizedStaticService.getStates();
+      const result = await OptimizedStaticService.getStates();
+      return result.states || [];
     }
 
     try {
@@ -51,13 +52,15 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return OptimizedStaticService.getStates();
+      const result = await OptimizedStaticService.getStates();
+      return result.states || [];
     }
   }
 
   static async getCounties(state) {
     if (USE_STATIC_DATA) {
-      return OptimizedStaticService.getCounties({ state });
+      const result = await OptimizedStaticService.getCounties({ state });
+      return result.counties || [];
     }
 
     const queryParams = new URLSearchParams();
@@ -71,13 +74,15 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return OptimizedStaticService.getCounties({ state });
+      const result = await OptimizedStaticService.getCounties({ state });
+      return result.counties || [];
     }
   }
 
   static async getCities(state, county) {
     if (USE_STATIC_DATA) {
-      return OptimizedStaticService.getCities({ state, county });
+      const result = await OptimizedStaticService.getCities({ state, county });
+      return result.cities || [];
     }
 
     const queryParams = new URLSearchParams();
@@ -92,7 +97,8 @@ export class ZipCodeService {
       return response.json();
     } catch (error) {
       console.warn('API failed, falling back to static data:', error);
-      return OptimizedStaticService.getCities({ state, county });
+      const result = await OptimizedStaticService.getCities({ state, county });
+      return result.cities || [];
     }
   }
 
