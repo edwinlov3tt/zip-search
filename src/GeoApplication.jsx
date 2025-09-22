@@ -256,7 +256,7 @@ const GeoApplication = () => {
           });
         }
       } catch (error) {
-        console.error('Error loading ZIP boundary:', error);
+        // Silently handle missing boundary
       }
 
     } else if (type === 'city') {
@@ -572,10 +572,9 @@ const GeoApplication = () => {
         });
 
         setZipBoundariesData(searchResultBoundaries);
-        // console.log(`Loaded ${searchResultBoundaries.features.length} boundaries`);
       }
     } catch (error) {
-      console.error('Failed to load search result boundaries:', error);
+      // Silently handle errors
     } finally {
       setLoadingZipBoundaries(false);
     }

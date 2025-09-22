@@ -5,9 +5,10 @@
 
 import boundaryCache from './boundaryCache';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'http://45.55.36.108:8002'  // Production API
-  : 'http://45.55.36.108:8002'; // Using production API for now since it's ready
+// Use HTTPS proxy in production, direct HTTP in development
+const API_BASE_URL = import.meta.env.PROD
+  ? '/api/proxy' // Use relative URL for Vercel deployment
+  : 'http://45.55.36.108:8002';
 
 class ZipBoundariesService {
   constructor() {
@@ -27,19 +28,20 @@ class ZipBoundariesService {
     // Check cache
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      // console.log(`Cache hit for ZIP ${zipCode}`);
       return cached.data;
     }
 
     try {
-      const url = `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
-      // console.log(`Fetching ZIP boundary from: ${url}`);
-
+      // Build URL differently for proxy vs direct
+      const url = import.meta.env.PROD
+        ? `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`
+        : `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
       const response = await fetch(url);
 
       if (!response.ok) {
         if (response.status === 404) {
-          throw new Error(`ZIP code ${zipCode} not found`);
+          // Silently return null for missing boundaries
+          return null;
         }
         throw new Error(`API error: ${response.status}`);
       }
@@ -52,11 +54,10 @@ class ZipBoundariesService {
         expires: Date.now() + this.cacheTimeout
       });
 
-      // console.log(`Successfully fetched boundary for ZIP ${zipCode}`);
       return data;
     } catch (error) {
-      console.error(`Error fetching ZIP boundary: ${error.message}`);
-      throw error;
+      // Don't log individual failures
+      return null;
     }
   }
 
@@ -74,8 +75,6 @@ class ZipBoundariesService {
       };
     }
 
-    // console.log(`Fetching boundaries for ${zipCodes.length} specific ZIP codes`);
-
     const features = [];
     const errors = [];
 
@@ -85,11 +84,10 @@ class ZipBoundariesService {
       const batch = zipCodes.slice(i, i + batchSize);
 
       const batchPromises = batch.map(async (zipCode) => {
-        try {
-          const boundary = await this.getZipBoundary(zipCode, simplified);
+        const boundary = await this.getZipBoundary(zipCode, simplified);
+        if (boundary) {
           return boundary;
-        } catch (error) {
-          // console.warn(`Failed to fetch boundary for ZIP ${zipCode}:`, error.message);
+        } else {
           errors.push(zipCode);
           return null;
         }
@@ -105,7 +103,10 @@ class ZipBoundariesService {
       });
     }
 
-    // console.log(`Successfully fetched ${features.length} ZIP boundaries (${errors.length} failed)`);
+    // Only log summary if there were failures
+    if (errors.length > 0) {
+      console.log(`Loaded ${features.length}/${zipCodes.length} boundaries (${errors.length} unavailable)`);
+    }
 
     return {
       type: 'FeatureCollection',
@@ -131,7 +132,6 @@ class ZipBoundariesService {
     // Check localStorage cache first
     const cached = boundaryCache.getViewportBoundaries(bounds);
     if (cached) {
-      console.log(`Using cached boundaries for viewport (${cached.features.length} features)`);
       return cached;
     }
 
@@ -145,8 +145,9 @@ class ZipBoundariesService {
         simplified: simplified.toString()
       });
 
-      const url = `${API_BASE_URL}/zip/boundaries/viewport?${params}`;
-      console.log(`Fetching viewport boundaries from: ${url}`);
+      const url = import.meta.env.PROD
+        ? `${API_BASE_URL}/zip/boundaries/viewport?${params}`
+        : `${API_BASE_URL}/zip/boundaries/viewport?${params}`;
 
       const response = await fetch(url);
 
@@ -156,16 +157,13 @@ class ZipBoundariesService {
 
       const data = await response.json();
 
-      console.log(`Fetched ${data.features.length} ZIP boundaries for viewport`);
-
       // Store in localStorage cache
-      if (data.features.length > 0) {
+      if (data.features && data.features.length > 0) {
         boundaryCache.storeViewportBoundaries(bounds, data);
       }
 
       return data;
     } catch (error) {
-      console.error(`Error fetching viewport boundaries: ${error.message}`);
       // Return empty collection on error
       return {
         type: 'FeatureCollection',
@@ -230,7 +228,6 @@ class ZipBoundariesService {
    */
   clearCache() {
     this.cache.clear();
-    console.log('ZIP boundaries cache cleared');
   }
 
   /**
@@ -245,10 +242,6 @@ class ZipBoundariesService {
         this.cache.delete(key);
         removed++;
       }
-    }
-
-    if (removed > 0) {
-      console.log(`Cleaned ${removed} expired cache entries`);
     }
   }
 
@@ -273,7 +266,6 @@ class ZipBoundariesService {
    */
   clearPersistentCache() {
     boundaryCache.clearCache();
-    console.log('Persistent cache cleared');
   }
 
   /**
