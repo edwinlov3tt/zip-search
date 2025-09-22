@@ -68,3 +68,4 @@ To get the GeoApplication running:
 2. Update `src/index.css` with Tailwind directives
 3. Modify `src/App.jsx` to import and use GeoApplication
 4. Run `npm run dev` to start the development server
+- Put all tests in @tests/ when done with them refer back to them for issues if needed

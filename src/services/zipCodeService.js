@@ -1,11 +1,23 @@
 import { OptimizedStaticService } from './optimizedStaticService';
+import supabaseService from './supabaseService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const USE_STATIC_DATA = true; // Use static data since API endpoints were removed
+const USE_SUPABASE = true; // Use Supabase as primary source
+const USE_STATIC_DATA = false; // Fallback option
 
 // API service functions for zip code data
 export class ZipCodeService {
   static async search(params) {
+    // Try Supabase first
+    if (USE_SUPABASE) {
+      try {
+        return await supabaseService.search(params);
+      } catch (error) {
+        console.warn('Supabase search failed, falling back to static data:', error);
+        return OptimizedStaticService.search(params);
+      }
+    }
+
     // Use static data if enabled
     if (USE_STATIC_DATA) {
       return OptimizedStaticService.search(params);
@@ -39,6 +51,16 @@ export class ZipCodeService {
   }
 
   static async getStates() {
+    if (USE_SUPABASE) {
+      try {
+        return await supabaseService.getStates();
+      } catch (error) {
+        console.warn('Supabase getStates failed, falling back to static data:', error);
+        const result = await OptimizedStaticService.getStates();
+        return result.states || [];
+      }
+    }
+
     if (USE_STATIC_DATA) {
       const result = await OptimizedStaticService.getStates();
       return result.states || [];
@@ -58,6 +80,16 @@ export class ZipCodeService {
   }
 
   static async getCounties(state) {
+    if (USE_SUPABASE) {
+      try {
+        return await supabaseService.getCounties(state);
+      } catch (error) {
+        console.warn('Supabase getCounties failed, falling back to static data:', error);
+        const result = await OptimizedStaticService.getCounties({ state });
+        return result.counties || [];
+      }
+    }
+
     if (USE_STATIC_DATA) {
       const result = await OptimizedStaticService.getCounties({ state });
       return result.counties || [];
@@ -80,6 +112,16 @@ export class ZipCodeService {
   }
 
   static async getCities(state, county) {
+    if (USE_SUPABASE) {
+      try {
+        return await supabaseService.getCities(state, county);
+      } catch (error) {
+        console.warn('Supabase getCities failed, falling back to static data:', error);
+        const result = await OptimizedStaticService.getCities({ state, county });
+        return result.cities || [];
+      }
+    }
+
     if (USE_STATIC_DATA) {
       const result = await OptimizedStaticService.getCities({ state, county });
       return result.cities || [];

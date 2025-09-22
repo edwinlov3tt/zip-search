@@ -1,11 +1,12 @@
 /**
  * ZIP Boundaries API Service
- * Connects to the droplet-hosted ZIP boundaries API
+ * Connects to PostGIS database via geo.edwinlovett.com API
  */
 
 import boundaryCache from './boundaryCache';
+import postgisService from './postgisService';
 
-// Use the new HTTPS endpoint with automatic fallbacks
+// Use the new HTTPS endpoint with PostGIS backend
 const API_BASE_URL = 'https://geo.edwinlovett.com';
 
 class ZipBoundariesService {
