@@ -5,10 +5,8 @@
 
 import boundaryCache from './boundaryCache';
 
-// Use HTTPS proxy in production, direct HTTP in development
-const API_BASE_URL = import.meta.env.PROD
-  ? '/api/proxy' // Use relative URL for Vercel deployment
-  : 'http://45.55.36.108:8002';
+// Use the new HTTPS endpoint with automatic fallbacks
+const API_BASE_URL = 'https://geo.edwinlovett.com';
 
 class ZipBoundariesService {
   constructor() {
@@ -32,10 +30,7 @@ class ZipBoundariesService {
     }
 
     try {
-      // Build URL differently for proxy vs direct
-      const url = import.meta.env.PROD
-        ? `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`
-        : `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
+      const url = `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -145,9 +140,7 @@ class ZipBoundariesService {
         simplified: simplified.toString()
       });
 
-      const url = import.meta.env.PROD
-        ? `${API_BASE_URL}/zip/boundaries/viewport?${params}`
-        : `${API_BASE_URL}/zip/boundaries/viewport?${params}`;
+      const url = `${API_BASE_URL}/zip/boundaries/viewport?${params}`;
 
       const response = await fetch(url);
 
