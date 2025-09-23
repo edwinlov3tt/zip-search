@@ -494,13 +494,18 @@ const GeoApplication = () => {
     try {
       console.log('Loading county boundaries...');
       // Load from public boundaries folder
-      const response = await fetch('/boundaries/us-counties.geojson');
+      const url = '/boundaries/us-counties.geojson';
+      const response = await fetch(url, { cache: 'force-cache' });
       if (response.ok) {
+        const ct = response.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          throw new Error(`Invalid content-type for ${url}: ${ct}`);
+        }
         const data = await response.json();
         setCountyBoundaries(data);
         console.log('County boundaries loaded successfully');
       } else {
-        console.warn('County boundaries file not found. Please follow setup instructions.');
+        console.warn(`County boundaries file not accessible (${response.status}). Ensure Vercel serves public/boundaries.`);
       }
     } catch (error) {
       console.error('Failed to load county boundaries:', error);
