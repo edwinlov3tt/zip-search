@@ -6,8 +6,12 @@
 import boundaryCache from './boundaryCache';
 import postgisService from './postgisService';
 
-// Use the new HTTPS endpoint with PostGIS backend
-const API_BASE_URL = 'https://geo.edwinlovett.com';
+// HTTPS API base for boundaries (env-driven)
+const API_BASE_URL = (() => {
+  const raw = import.meta.env.VITE_GEO_API_BASE;
+  if (!raw) return 'https://geo.edwinlovett.com';
+  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+})();
 
 class ZipBoundariesService {
   constructor() {

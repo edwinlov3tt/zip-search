@@ -10,6 +10,8 @@ import { ZipCodeService } from './services/zipCodeService';
 import { geocodingService } from './services/geocodingService';
 import { mapboxGeocodingService } from './services/mapboxGeocodingService';
 import zipBoundariesService from './services/zipBoundariesService';
+import stateBoundariesService from './services/stateBoundariesService';
+import cityBoundariesService from './services/cityBoundariesService';
 
 // Debounce utility function
 function debounce(func, wait) {
@@ -170,8 +172,14 @@ const GeoApplication = () => {
   const [showCountyBorders, setShowCountyBorders] = useState(false);
   const [countyBoundaries, setCountyBoundaries] = useState(null);
   const [showZipBoundaries, setShowZipBoundaries] = useState(false);
+  const [showStateBoundaries, setShowStateBoundaries] = useState(false);
+  const [showCityBoundaries, setShowCityBoundaries] = useState(false);
   const [zipBoundariesData, setZipBoundariesData] = useState(null);
+  const [stateBoundariesData, setStateBoundariesData] = useState(null);
+  const [cityBoundariesData, setCityBoundariesData] = useState(null);
   const [loadingZipBoundaries, setLoadingZipBoundaries] = useState(false);
+  const [loadingStateBoundaries, setLoadingStateBoundaries] = useState(false);
+  const [loadingCityBoundaries, setLoadingCityBoundaries] = useState(false);
   const [currentViewport, setCurrentViewport] = useState(null);
   const [selectedCountyBoundary, setSelectedCountyBoundary] = useState(null);
   const [focusedZipCode, setFocusedZipCode] = useState(null);
@@ -210,6 +218,8 @@ const GeoApplication = () => {
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const featureGroupRef = useRef(null);
+  const stateReqRef = useRef(0);
+  const cityReqRef = useRef(0);
 
   // Helper function to handle result selection from drawer
   const handleResultSelect = async (type, result) => {
@@ -224,26 +234,15 @@ const GeoApplication = () => {
       return;
     }
 
-    // Force map update with precise coordinates
+    // Prepare map reference
     const newCenter = [lat, lng];
-    setMapCenter(newCenter);
 
     // Set appropriate zoom level and show boundaries based on type
     if (type === 'zip') {
-      setMapZoom(13); // Close zoom for ZIP codes
-      setFocusedZipCode(result.zipCode); // Highlight this ZIP
-      setShowOnlyFocusedBoundary(true); // Only show this ZIP's boundary
-
-      // Auto-enable ZIP boundaries and load if not already shown
-      if (!showZipBoundaries) {
-        setShowZipBoundaries(true);
-      }
-
-      // Load boundary for this specific ZIP
+      // Load boundary first to avoid empty-flash when switching focus
       try {
         const boundary = await zipBoundariesService.getZipBoundary(result.zipCode, true);
         if (boundary) {
-          // Set only this boundary to be displayed
           setZipBoundariesData({
             type: 'FeatureCollection',
             features: [{
@@ -254,19 +253,51 @@ const GeoApplication = () => {
               }
             }]
           });
+          setFocusedZipCode(result.zipCode); // Highlight this ZIP
+          setShowOnlyFocusedBoundary(true); // Only show this ZIP's boundary
+          if (!showZipBoundaries) setShowZipBoundaries(true);
+
+          // Fit to boundary for reliable focus
+          try {
+            const gj = L.geoJSON(boundary);
+            const b = gj.getBounds();
+            if (b && b.isValid()) {
+              mapRef.current?.fitBounds(b, { padding: [20, 20], maxZoom: 14 });
+            } else {
+              setMapCenter(newCenter);
+              setMapZoom(13);
+            }
+          } catch {
+            setMapCenter(newCenter);
+            setMapZoom(13);
+          }
         }
       } catch (error) {
         // Silently handle missing boundary
       }
 
     } else if (type === 'city') {
-      setMapZoom(11); // Medium zoom for cities
+      // set zoom via fitBounds once boundary loaded
       setFocusedZipCode(null);
-      setShowOnlyFocusedBoundary(false); // Show all boundaries for city
+      setShowOnlyFocusedBoundary(false);
+      // Load city boundary and show layer
+      try {
+        const cityFeature = await cityBoundariesService.getCityBoundary(result.name, result.state, true);
+        if (cityFeature) {
+          setCityBoundariesData({ type: 'FeatureCollection', features: [cityFeature] });
+          if (!showCityBoundaries) setShowCityBoundaries(true);
 
-      // Show ZIP boundaries for all ZIPs in this city
-      if (!showZipBoundaries) {
-        setShowZipBoundaries(true);
+          // Fit to city boundary
+          try {
+            const gj = L.geoJSON(cityFeature);
+            const b = gj.getBounds();
+            if (b && b.isValid()) {
+              mapRef.current?.fitBounds(b, { padding: [24, 24], maxZoom: 13 });
+            }
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('Failed to load city boundary', e);
       }
 
     } else if (type === 'county') {
@@ -291,8 +322,27 @@ const GeoApplication = () => {
       }
 
     } else if (type === 'state') {
-      setMapZoom(6); // Wide zoom for states
+      // set zoom via fitBounds once boundary loaded
       setFocusedZipCode(null);
+      setShowOnlyFocusedBoundary(false);
+      try {
+        const stateFeature = await stateBoundariesService.getStateBoundary(result.state || result.name, true);
+        if (stateFeature) {
+          setStateBoundariesData({ type: 'FeatureCollection', features: [stateFeature] });
+          if (!showStateBoundaries) setShowStateBoundaries(true);
+
+          // Fit to state boundary
+          try {
+            const gj = L.geoJSON(stateFeature);
+            const b = gj.getBounds();
+            if (b && b.isValid()) {
+              mapRef.current?.fitBounds(b, { padding: [24, 24], maxZoom: 8 });
+            }
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('Failed to load state boundary', e);
+      }
     }
 
     // Open popup for ZIP markers when selected from drawer
@@ -302,6 +352,7 @@ const GeoApplication = () => {
         const marker = markersRef.current[`zip-${result.id}`];
         if (marker && mapRef.current) {
           // Ensure map is centered first, then open popup
+          // keep setView for marker popup focus, but bounds already fitted above
           mapRef.current.setView(newCenter, 13, { animate: true });
           setTimeout(() => {
             marker.openPopup();
@@ -436,6 +487,8 @@ const GeoApplication = () => {
     }
   }, [showZipBoundaries, zipResults, searchPerformed]);
 
+  // (Replaced) Viewport-based loading removed for states/cities; we will load by results below
+
 
   const loadCountyBoundaries = async () => {
     try {
@@ -512,6 +565,8 @@ const GeoApplication = () => {
     }, 500),
     [currentViewport, showZipBoundaries]
   );
+
+  // Result-based loaders are declared after filtered results are computed
 
   // Handle viewport change
   const handleViewportChange = useCallback((viewport) => {
@@ -859,15 +914,39 @@ const GeoApplication = () => {
       if (searchMode === 'radius') {
         // Radius search
         if (searchTerm) {
-          // First geocode the search term to get coordinates
-          try {
-            const geocoded = await ZipCodeService.geocodeLocation(searchTerm);
-            searchParams.lat = geocoded.lat;
-            searchParams.lng = geocoded.lng;
-            searchParams.radius = radius;
-          } catch (geocodeError) {
-            // If geocoding fails, fallback to text search
-            searchParams.query = searchTerm;
+          // Check if it's a ZIP code (5 digits)
+          if (/^\d{5}$/.test(searchTerm.trim())) {
+            // Direct ZIP search first
+            searchParams.query = searchTerm.trim();
+            searchParams.limit = 1;
+            const zipResult = await ZipCodeService.search(searchParams);
+
+            if (zipResult.results && zipResult.results.length > 0) {
+              // Found the ZIP, now do radius search around it
+              const zip = zipResult.results[0];
+              searchParams = {
+                lat: zip.latitude,
+                lng: zip.longitude,
+                radius: radius,
+                limit: 2000
+              };
+            } else {
+              // ZIP not found
+              setApiError(`ZIP code ${searchTerm} not found`);
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            // Try to geocode as location name
+            try {
+              const geocoded = await ZipCodeService.geocodeLocation(searchTerm);
+              searchParams.lat = geocoded.lat;
+              searchParams.lng = geocoded.lng;
+              searchParams.radius = radius;
+            } catch (geocodeError) {
+              // If geocoding fails, do a text search
+              searchParams.query = searchTerm;
+            }
           }
         }
       } else if (searchMode === 'polygon') {
@@ -2211,6 +2290,97 @@ const GeoApplication = () => {
   const filteredCountyResults = filterResults(countyResults, 'county');
   const filteredStateResults = filterResults(stateResults, 'state');
 
+  // Result-based loaders for State and City boundaries (declare after filtered lists)
+  const stateKeys = React.useMemo(() => {
+    return Array.from(new Set(filteredStateResults.map(s => s.state).filter(Boolean))).sort();
+  }, [filteredStateResults]);
+
+  const lastStateKeysRef = useRef('');
+  const loadStateBoundariesForResults = useCallback(async () => {
+    if (!showStateBoundaries) return;
+    const keysStr = stateKeys.join('|');
+    if (keysStr === lastStateKeysRef.current) return; // no change
+    lastStateKeysRef.current = keysStr;
+    const reqId = ++stateReqRef.current;
+    setLoadingStateBoundaries(true);
+    try {
+      if (stateKeys.length === 0) {
+        if (reqId === stateReqRef.current) setStateBoundariesData({ type: 'FeatureCollection', features: [] });
+        return;
+      }
+      // Batch requests to avoid resource exhaustion
+      const features = [];
+      const batchSize = 20;
+      for (let i = 0; i < stateKeys.length; i += batchSize) {
+        const batch = stateKeys.slice(i, i + batchSize);
+        const feats = await Promise.all(batch.map(code => stateBoundariesService.getStateBoundary(code, true)));
+        if (reqId !== stateReqRef.current) return; // stale
+        features.push(...feats.filter(Boolean));
+      }
+      if (reqId !== stateReqRef.current) return;
+      setStateBoundariesData({ type: 'FeatureCollection', features });
+    } catch (e) {
+      console.error('Failed to load state boundaries (results):', e);
+    } finally {
+      if (reqId === stateReqRef.current) setLoadingStateBoundaries(false);
+    }
+  }, [showStateBoundaries, stateKeys]);
+
+  const cityKeys = React.useMemo(() => {
+    return Array.from(new Set(filteredCityResults.map(c => `${c.name}|${c.state}`))).sort();
+  }, [filteredCityResults]);
+
+  const lastCityKeysRef = useRef('');
+  const loadCityBoundariesForResults = useCallback(async () => {
+    if (!showCityBoundaries) return;
+    const keysStr = cityKeys.join('|');
+    if (keysStr === lastCityKeysRef.current) return; // no change
+    lastCityKeysRef.current = keysStr;
+    const reqId = ++cityReqRef.current;
+    setLoadingCityBoundaries(true);
+    try {
+      if (cityKeys.length === 0) {
+        if (reqId === cityReqRef.current) setCityBoundariesData({ type: 'FeatureCollection', features: [] });
+        return;
+      }
+      const features = [];
+      const batchSize = 20;
+      for (let i = 0; i < cityKeys.length; i += batchSize) {
+        const batch = cityKeys.slice(i, i + batchSize);
+        const feats = await Promise.all(batch.map(key => {
+          const [name, state] = key.split('|');
+          return cityBoundariesService.getCityBoundary(name, state, true);
+        }));
+        if (reqId !== cityReqRef.current) return; // stale
+        features.push(...feats.filter(Boolean));
+      }
+      if (reqId !== cityReqRef.current) return;
+      setCityBoundariesData({ type: 'FeatureCollection', features });
+    } catch (e) {
+      console.error('Failed to load city boundaries (results):', e);
+    } finally {
+      if (reqId === cityReqRef.current) setLoadingCityBoundaries(false);
+    }
+  }, [showCityBoundaries, cityKeys]);
+
+  // When toggles change or filtered lists update, load exact boundaries for results
+  useEffect(() => {
+    if (showStateBoundaries) {
+      loadStateBoundariesForResults();
+    } else {
+      setStateBoundariesData(null);
+    }
+  }, [showStateBoundaries, filteredStateResults, loadStateBoundariesForResults]);
+
+  useEffect(() => {
+    if (showCityBoundaries) {
+      loadCityBoundariesForResults();
+    } else {
+      setCityBoundariesData(null);
+    }
+  }, [showCityBoundaries, filteredCityResults, loadCityBoundariesForResults]);
+
+
   // Handle drawer resize
   const handleMouseDown = (e) => {
     if (drawerState === 'half') {
@@ -3043,10 +3213,17 @@ const GeoApplication = () => {
               {showZipBoundaries && zipBoundariesData && (
                 <GeoJSON
                   key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}`} // Re-render when features count or focus changes
-                  data={showOnlyFocusedBoundary && focusedZipCode ? {
-                    ...zipBoundariesData,
-                    features: zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode)
-                  } : zipBoundariesData}
+                  data={(() => {
+                    if (showOnlyFocusedBoundary && focusedZipCode) {
+                      const only = zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode)
+                      if (only.length > 0) {
+                        return { ...zipBoundariesData, features: only }
+                      }
+                      // Fallback: keep previous features to avoid empty flash
+                      return zipBoundariesData
+                    }
+                    return zipBoundariesData
+                  })()}
                   style={(feature) => {
                     const zipCode = feature.properties?.zipcode;
                     const isInResults = feature.properties?.inSearchResults;
@@ -3264,6 +3441,34 @@ const GeoApplication = () => {
                 />
               )}
 
+              {/* State Boundaries Layer */}
+              {showStateBoundaries && stateBoundariesData && (
+                <GeoJSON
+                  key={`state-boundaries-${stateBoundariesData.features?.length || 0}`}
+                  data={stateBoundariesData}
+                  style={() => ({ color: '#2563eb', weight: 2, opacity: 0.8, fillOpacity: 0.05, fillColor: '#93c5fd' })}
+                  onEachFeature={(feature, layer) => {
+                    const props = feature.properties || {}
+                    const label = props.name ? `${props.name} (${props.code || ''})` : (props.code || 'State')
+                    layer.bindPopup(`<strong>${label}</strong>`)
+                  }}
+                />
+              )}
+
+              {/* City Boundaries Layer */}
+              {showCityBoundaries && cityBoundariesData && (
+                <GeoJSON
+                  key={`city-boundaries-${cityBoundariesData.features?.length || 0}`}
+                  data={cityBoundariesData}
+                  style={() => ({ color: '#7c3aed', weight: 1.5, opacity: 0.9, fillOpacity: 0.04, fillColor: '#c4b5fd' })}
+                  onEachFeature={(feature, layer) => {
+                    const props = feature.properties || {}
+                    const label = props.name ? `${props.name}${props.state_code ? ', ' + props.state_code : ''}` : 'City'
+                    layer.bindPopup(`<strong>${label}</strong>`)
+                  }}
+                />
+              )}
+
             </MapContainer>
 
           </div>
@@ -3375,6 +3580,36 @@ const GeoApplication = () => {
                         className="rounded"
                       />
                       <span>County Borders</span>
+                    </label>
+                    <label className="flex items-center space-x-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={showStateBoundaries}
+                        onChange={(e) => {
+                          setShowStateBoundaries(e.target.checked)
+                          if (!e.target.checked) setStateBoundariesData(null)
+                        }}
+                        className="rounded"
+                        disabled={loadingStateBoundaries}
+                      />
+                      <span className="flex items-center space-x-1">
+                        State Boundaries {loadingStateBoundaries && <span className="inline-block animate-spin">⟳</span>}
+                      </span>
+                    </label>
+                    <label className="flex items-center space-x-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={showCityBoundaries}
+                        onChange={(e) => {
+                          setShowCityBoundaries(e.target.checked)
+                          if (!e.target.checked) setCityBoundariesData(null)
+                        }}
+                        className="rounded"
+                        disabled={loadingCityBoundaries}
+                      />
+                      <span className="flex items-center space-x-1">
+                        City Boundaries {loadingCityBoundaries && <span className="inline-block animate-spin">⟳</span>}
+                      </span>
                     </label>
                     <label className="flex items-center space-x-1 text-xs">
                       <input

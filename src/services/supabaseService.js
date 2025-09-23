@@ -4,12 +4,21 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { getStateName } from '../utils/stateNames.js';
 
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xpdvxliqbrctzyxmijmm.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwZHZ4bGlxYnJjdHp5eG1pam1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0MDk4MTAsImV4cCI6MjA3Mzk4NTgxMH0.yRon9tuR3QHfsAcVXqfGsD4NIUGLUmz-SPSC0VvKrqY';
+// Initialize Supabase client (env-only; no hardcoded defaults)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey);
+const supabase = hasSupabase ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// One-time init log (non-sensitive)
+try {
+  const urlHost = supabaseUrl ? new URL(supabaseUrl).host : 'n/a';
+  console.info('[Supabase] init', { enabled: hasSupabase, urlHost });
+} catch (_) {
+  console.info('[Supabase] init', { enabled: hasSupabase });
+}
 
 class SupabaseService {
   constructor() {
@@ -20,7 +29,12 @@ class SupabaseService {
   /**
    * Search ZIP codes with various parameters
    */
-  async search(params) {
+  async search(params = {}) {
+    if (!hasSupabase) {
+      console.warn('Supabase disabled: missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+      return { results: [], total: 0, offset: params.offset || 0, limit: params.limit || 0, hasMore: false };
+    }
+    const t0 = performance && performance.now ? performance.now() : Date.now();
     const {
       query,
       lat,
@@ -30,13 +44,80 @@ class SupabaseService {
       county,
       city,
       polygon,
-      limit = 100,
+      limit = 500,  // Increased default for initial load
       offset = 0
     } = params;
 
     try {
+      // If no search parameters provided, return empty results instead of loading everything
+      if (!query && !lat && !lng && !state && !county && !city && !polygon) {
+        return {
+          results: [],
+          total: 0,
+          offset,
+          limit,
+          hasMore: false
+        };
+      }
+
+      // Prefer RPC for precise server-side spatial filtering when possible
+      if (lat != null && lng != null && radius != null) {
+        try {
+          const { data, error } = await supabase.rpc('zips_within_radius', {
+            lat: Number(lat),
+            lng: Number(lng),
+            radius_miles: Number(radius),
+            lim: limit,
+            off: offset,
+          });
+          if (!error && Array.isArray(data)) {
+            const results = (data || []).map(row => ({
+              zipcode: row.zipcode,
+              city: row.city,
+              state: row.state_code,
+              stateCode: row.state_code,
+              county: row.county,
+              latitude: row.latitude,
+              longitude: row.longitude,
+              lat: row.latitude,
+              lng: row.longitude
+            }));
+            console.info('[Supabase] rpc zips_within_radius', { rows: results.length });
+            return { results, total: results.length, offset, limit, hasMore: false };
+          }
+        } catch (e) {
+          console.warn('[Supabase] rpc zips_within_radius failed; falling back.', e);
+        }
+      } else if (polygon && Array.isArray(polygon) && polygon.length >= 3) {
+        try {
+          const polygonGeoJson = this._polygonToGeoJSON(polygon);
+          const { data, error } = await supabase.rpc('zips_within_polygon', {
+            polygon_geojson: polygonGeoJson,
+            lim: limit,
+            off: offset,
+          });
+          if (!error && Array.isArray(data)) {
+            const results = (data || []).map(row => ({
+              zipcode: row.zipcode,
+              city: row.city,
+              state: row.state_code,
+              stateCode: row.state_code,
+              county: row.county,
+              latitude: row.latitude,
+              longitude: row.longitude,
+              lat: row.latitude,
+              lng: row.longitude
+            }));
+            console.info('[Supabase] rpc zips_within_polygon', { rows: results.length });
+            return { results, total: results.length, offset, limit, hasMore: false };
+          }
+        } catch (e) {
+          console.warn('[Supabase] rpc zips_within_polygon failed; falling back.', e);
+        }
+      }
+
       let queryBuilder = supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('*');
 
       // Text search (ZIP, city, county)
@@ -59,10 +140,40 @@ class SupabaseService {
         queryBuilder = queryBuilder.eq('city', city);
       }
 
-      // Pagination
-      queryBuilder = queryBuilder.range(offset, offset + limit - 1);
+      // Spatial pre-filter (bounding box) to reduce transfer for radius/polygon)
+      if (lat != null && lng != null && radius != null) {
+        const miles = Number(radius);
+        const latDelta = miles / 69; // approx
+        const lngDelta = miles / (69 * Math.cos((Number(lat) || 0) * Math.PI / 180) || 1);
+        const minLat = Number(lat) - latDelta;
+        const maxLat = Number(lat) + latDelta;
+        const minLng = Number(lng) - lngDelta;
+        const maxLng = Number(lng) + lngDelta;
+        queryBuilder = queryBuilder
+          .gte('latitude', minLat)
+          .lte('latitude', maxLat)
+          .gte('longitude', minLng)
+          .lte('longitude', maxLng);
+      } else if (polygon && Array.isArray(polygon) && polygon.length >= 3) {
+        const lats = polygon.map(p => p.lat);
+        const lngs = polygon.map(p => p.lng);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        queryBuilder = queryBuilder
+          .gte('latitude', minLat)
+          .lte('latitude', maxLat)
+          .gte('longitude', minLng)
+          .lte('longitude', maxLng);
+      }
 
-      const { data, error, count } = await queryBuilder;
+      // Pagination - need to request count separately for total
+      queryBuilder = queryBuilder
+        .range(offset, offset + limit - 1)
+        .limit(limit);
+
+      const { data, error } = await queryBuilder;
 
       if (error) {
         console.error('Supabase query error:', error);
@@ -82,7 +193,7 @@ class SupabaseService {
         lng: row.longitude
       }));
 
-      // Filter by radius if coordinates provided
+      // Client-side filters where applicable
       let filteredResults = results;
       if (lat && lng && radius) {
         filteredResults = results.filter(zip => {
@@ -91,59 +202,101 @@ class SupabaseService {
         });
       }
 
-      return {
+      // Polygon filter (client-side)
+      if (polygon && Array.isArray(polygon) && polygon.length >= 3) {
+        filteredResults = filteredResults.filter((zip) => {
+          return this.pointInPolygon({ lat: zip.latitude, lng: zip.longitude }, polygon);
+        });
+      }
+
+      const out = {
         results: filteredResults,
-        total: count || filteredResults.length,
+        total: filteredResults.length,
         offset,
         limit,
-        hasMore: (offset + limit) < (count || filteredResults.length)
+        hasMore: false  // Can't determine without count
       };
+
+      // Dev log to clarify filtering behavior
+      try {
+        const bboxApplied = (lat != null && lng != null && radius != null) || (polygon && Array.isArray(polygon) && polygon.length >= 3);
+        console.info('[Supabase] results', {
+          raw: (data || []).length,
+          filtered: filteredResults.length,
+          bboxApplied,
+          usedParams: { hasQuery: !!query, hasLatLng: !!(lat && lng), hasPolygon: !!polygon }
+        });
+      } catch (_) {}
+
+      return out;
 
     } catch (error) {
       console.error('Supabase search error:', error);
-
-      // Fallback to static data if Supabase fails
-      try {
-        const { OptimizedStaticService } = await import('./optimizedStaticService');
-        return OptimizedStaticService.search(params);
-      } catch (fallbackError) {
-        console.error('Fallback to static data also failed:', fallbackError);
-        return { results: [], total: 0, offset, limit, hasMore: false };
-      }
+      throw error;
+    } finally {
+      const t1 = performance && performance.now ? performance.now() : Date.now();
+      console.info('[Supabase] search', {
+        params: { hasQuery: !!params.query, hasLatLng: !!(params.lat && params.lng), hasPolygon: !!params.polygon },
+        ms: Math.round(t1 - t0)
+      });
     }
+  }
+
+  _polygonToGeoJSON(polygon) {
+    const coords = polygon.map(p => [Number(p.lng), Number(p.lat)]);
+    if (coords.length > 0) {
+      const [fx, fy] = coords[0];
+      const [lx, ly] = coords[coords.length - 1];
+      if (fx !== lx || fy !== ly) coords.push([fx, fy]);
+    }
+    return { type: 'Polygon', coordinates: [coords] };
   }
 
   /**
    * Get all states
    */
   async getStates() {
+    if (!hasSupabase) {
+      console.warn('Supabase disabled: missing env');
+      return [];
+    }
     try {
+      // Prefer RPC for distinct states if available
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('distinct_states');
+        if (!rpcError && Array.isArray(rpcData)) {
+          const states = rpcData
+            .map(r => (r && typeof r.code === 'string' ? r.code.trim().toUpperCase() : null))
+            .filter(code => typeof code === 'string' && /^[A-Z]{2}$/.test(code))
+            .map(code => ({ code, name: getStateName(code) }));
+          console.info('[Supabase] states via RPC', { count: states.length });
+          return states;
+        }
+      } catch (e) {
+        console.warn('[Supabase] distinct_states RPC unavailable; falling back.', e);
+      }
+
+      // Fallback: fetch codes and de-duplicate client-side
       const { data, error } = await supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('state_code')
+        .not('state_code', 'is', null)
         .order('state_code');
 
       if (error) throw error;
 
-      // Get unique states
-      const uniqueStates = [...new Set(data.map(row => row.state_code))];
-
-      return uniqueStates.map(code => ({
-        code,
-        name: code // You could map to full names if needed
-      }));
+      const uniqueStates = [...new Set(
+        (data || [])
+          .map(row => (row && typeof row.state_code === 'string' ? row.state_code.trim().toUpperCase() : null))
+          .filter(code => typeof code === 'string' && /^[A-Z]{2}$/.test(code))
+      )];
+      const states = uniqueStates.map(code => ({ code, name: getStateName(code) }));
+      console.info('[Supabase] states via select', { count: states.length });
+      return states;
 
     } catch (error) {
       console.error('Supabase getStates error:', error);
-
-      // Fallback to static data
-      try {
-        const { OptimizedStaticService } = await import('./optimizedStaticService');
-        const result = await OptimizedStaticService.getStates();
-        return result.states || [];
-      } catch (fallbackError) {
-        return [];
-      }
+      throw error;
     }
   }
 
@@ -151,9 +304,13 @@ class SupabaseService {
    * Get counties for a state
    */
   async getCounties(state) {
+    if (!hasSupabase) {
+      console.warn('Supabase disabled: missing env');
+      return [];
+    }
     try {
       const { data, error } = await supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('county')
         .eq('state_code', state)
         .order('county');
@@ -167,15 +324,7 @@ class SupabaseService {
 
     } catch (error) {
       console.error('Supabase getCounties error:', error);
-
-      // Fallback to static data
-      try {
-        const { OptimizedStaticService } = await import('./optimizedStaticService');
-        const result = await OptimizedStaticService.getCounties({ state });
-        return result.counties || [];
-      } catch (fallbackError) {
-        return [];
-      }
+      throw error;
     }
   }
 
@@ -183,9 +332,13 @@ class SupabaseService {
    * Get cities for a state/county
    */
   async getCities(state, county) {
+    if (!hasSupabase) {
+      console.warn('Supabase disabled: missing env');
+      return [];
+    }
     try {
       let queryBuilder = supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('city');
 
       if (state) {
@@ -209,15 +362,7 @@ class SupabaseService {
 
     } catch (error) {
       console.error('Supabase getCities error:', error);
-
-      // Fallback to static data
-      try {
-        const { OptimizedStaticService } = await import('./optimizedStaticService');
-        const result = await OptimizedStaticService.getCities({ state, county });
-        return result.cities || [];
-      } catch (fallbackError) {
-        return [];
-      }
+      throw error;
     }
   }
 
@@ -225,9 +370,13 @@ class SupabaseService {
    * Get single ZIP code details
    */
   async getZipCode(zipCode) {
+    if (!hasSupabase) {
+      console.warn('Supabase disabled: missing env');
+      return { error: 'Supabase disabled', zipcode: null };
+    }
     try {
       const { data, error } = await supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('*')
         .eq('zipcode', zipCode)
         .single();
@@ -251,14 +400,7 @@ class SupabaseService {
 
     } catch (error) {
       console.error('Supabase getZipCode error:', error);
-
-      // Fallback to static data
-      try {
-        const { OptimizedStaticService } = await import('./optimizedStaticService');
-        return OptimizedStaticService.getZipCode({ zip: zipCode });
-      } catch (fallbackError) {
-        return { error: 'Zip code not found', zipcode: null };
-      }
+      throw error;
     }
   }
 
@@ -280,18 +422,34 @@ class SupabaseService {
     return R * c;
   }
 
+  // Simple ray-casting point-in-polygon check
+  pointInPolygon(point, polygon) {
+    const x = point.lng, y = point.lat;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].lng, yi = polygon[i].lat;
+      const xj = polygon[j].lng, yj = polygon[j].lat;
+      const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
   /**
    * Check if Supabase is connected and working
    */
   async checkHealth() {
+    if (!hasSupabase) return false;
     try {
       const { data, error } = await supabase
-        .from('zip_codes')
+        .from('zipcodes')
         .select('zipcode')
         .limit(1);
-
-      return !error && data && data.length > 0;
+      const ok = !error && data && data.length > 0;
+      console.info('[Supabase] health', { ok });
+      return ok;
     } catch {
+      console.info('[Supabase] health', { ok: false });
       return false;
     }
   }

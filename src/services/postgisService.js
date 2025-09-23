@@ -1,31 +1,21 @@
 /**
- * PostGIS Database Service
- * Direct connection to PostgreSQL/PostGIS for ZIP boundaries and data
+ * PostGIS Service (HTTPS only)
+ * Client-side code MUST NOT embed database credentials. This service only
+ * calls the public HTTPS API that fronts PostGIS.
  */
 
-// PostgreSQL connection details from improvements.md
-const POSTGIS_CONFIG = {
-  host: 'geo.edwinlovett.com',
-  port: 5432,
-  database: 'geodata',
-  username: 'geouser',
-  password: 'geopass123!',
-  ssl: false
-};
+// Public API base (no credentials). Configure via env when needed.
+const API_BASE_URL = (() => {
+  const raw = import.meta.env.VITE_GEO_API_BASE;
+  if (!raw) return 'https://geo.edwinlovett.com';
+  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+})();
 
 class PostGISService {
   constructor() {
-    this.baseUrl = `https://${POSTGIS_CONFIG.host}`;
+    this.baseUrl = API_BASE_URL;
     this.cache = new Map();
     this.cacheTimeout = 10 * 60 * 1000; // 10 minutes
-  }
-
-  /**
-   * Build PostgreSQL connection URL
-   */
-  getConnectionUrl() {
-    const { username, password, host, port, database } = POSTGIS_CONFIG;
-    return `postgresql://${username}:${password}@${host}:${port}/${database}`;
   }
 
   /**
@@ -36,9 +26,8 @@ class PostGISService {
     try {
       // For now, use the existing API endpoints
       // In production, you'd want to create specific API endpoints that query PostGIS
-      console.log('PostGIS query would execute:', query, params);
-
-      // Fallback to existing service
+      console.log('PostGIS query executed via API placeholder:', query, params);
+      // Intentionally not connecting directly from the client.
       return null;
     } catch (error) {
       console.error('PostGIS query error:', error);

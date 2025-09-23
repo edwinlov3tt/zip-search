@@ -4,9 +4,11 @@
 
 class MapBoxGeocodingService {
   constructor() {
-    // You'll need to replace this with your actual MapBox API key
-    // Sign up at https://www.mapbox.com/ and create a token
-    this.apiKey = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_API_KEY_HERE';
+    // Load Mapbox key from env (supports TOKEN or ACCESS_TOKEN)
+    this.apiKey =
+      import.meta.env.VITE_MAPBOX_TOKEN ||
+      import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ||
+      'YOUR_MAPBOX_API_KEY_HERE';
     this.baseUrl = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
     this.lastRequestTime = 0;
     this.minInterval = 100; // MapBox allows much higher rate limits
@@ -64,7 +66,7 @@ class MapBoxGeocodingService {
     }
 
     if (this.apiKey === 'YOUR_MAPBOX_API_KEY_HERE') {
-      console.warn('MapBox API key not configured. Please set REACT_APP_MAPBOX_TOKEN environment variable.');
+      console.warn('Mapbox API key not configured. Set VITE_MAPBOX_TOKEN or VITE_MAPBOX_ACCESS_TOKEN.');
       return [];
     }
 
@@ -231,7 +233,7 @@ class MapBoxGeocodingService {
   // Reverse geocode coordinates to get address
   async reverseGeocode(lat, lng) {
     if (this.apiKey === 'YOUR_MAPBOX_API_KEY_HERE') {
-      console.warn('MapBox API key not configured.');
+      console.warn('Mapbox API key not configured. Set VITE_MAPBOX_TOKEN or VITE_MAPBOX_ACCESS_TOKEN.');
       return null;
     }
 

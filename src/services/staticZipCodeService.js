@@ -22,6 +22,7 @@ async function loadZipData() {
             zipcode: item.z,
             city: item.c,
             state: item.s,
+            stateCode: item.s,
             county: item.co,
             latitude: item.lat,
             longitude: item.lng
