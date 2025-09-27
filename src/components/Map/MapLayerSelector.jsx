@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers } from 'lucide-react';
+import { Map as MapIcon, Globe, Layers } from 'lucide-react';
 import { useMap } from '../../contexts/MapContext';
 import { useUI } from '../../contexts/UIContext';
 
@@ -13,57 +13,76 @@ const MapLayerSelector = () => {
 
   const { isDarkMode } = useUI();
 
-  const mapTypes = [
-    { id: 'street', label: 'Street', icon: '🗺️' },
-    { id: 'satellite', label: 'Satellite', icon: '🛰️' },
-    { id: 'terrain', label: 'Terrain', icon: '⛰️' }
-  ];
-
   return (
-    <div className="absolute top-20 left-3 z-[1000]">
-      <button
-        onClick={() => setShowMapLayers(!showMapLayers)}
-        className={`flex items-center space-x-2 px-3 py-2 rounded-lg shadow-lg transition-colors ${
-          isDarkMode
-            ? 'bg-gray-800 text-white hover:bg-gray-700 border border-gray-600'
-            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-        }`}
-        title="Change map type"
-      >
-        <Layers className="h-4 w-4" />
-        <span className="text-sm font-medium">Layers</span>
-      </button>
-
-      {showMapLayers && (
-        <div className={`mt-2 p-2 rounded-lg shadow-lg ${
-          isDarkMode
-            ? 'bg-gray-800 border border-gray-600'
-            : 'bg-white border border-gray-200'
-        }`}>
-          <div className="space-y-1">
-            {mapTypes.map(type => (
-              <button
-                key={type.id}
-                onClick={() => {
-                  setMapType(type.id);
-                  setShowMapLayers(false);
-                }}
-                className={`w-full flex items-center space-x-2 px-3 py-2 rounded transition-colors text-sm ${
-                  mapType === type.id
-                    ? 'bg-red-600 text-white'
-                    : isDarkMode
-                      ? 'hover:bg-gray-700 text-gray-300'
-                      : 'hover:bg-gray-100 text-gray-700'
-                }`}
-              >
-                <span>{type.icon}</span>
-                <span>{type.label}</span>
-              </button>
-            ))}
-          </div>
+    <>
+      {/* Desktop version - always visible on right */}
+      <div className={`hidden lg:block absolute top-4 right-4 z-[999] ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border p-2`}>
+        <div className="space-y-1">
+          {[
+            { type: 'street', label: 'Street', icon: MapIcon },
+            { type: 'satellite', label: 'Satellite', icon: Globe },
+            { type: 'terrain', label: 'Terrain', icon: Layers }
+          ].map(({ type, label, icon: Icon }) => (
+            <button
+              key={type}
+              onClick={() => setMapType(type)}
+              className={`w-full p-2 text-left rounded flex items-center space-x-2 transition-colors ${
+                mapType === type
+                  ? 'bg-red-600 text-white'
+                  : isDarkMode
+                    ? 'hover:bg-gray-700 text-gray-300'
+                    : 'hover:bg-gray-100 text-gray-700'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="text-sm">{label}</span>
+            </button>
+          ))}
         </div>
-      )}
-    </div>
+      </div>
+
+      {/* Mobile/Tablet version - collapsible on left */}
+      <div className={`lg:hidden absolute top-20 left-4 z-[999] transition-all duration-300 ${
+        showMapLayers ? 'translate-x-0' : '-translate-x-[calc(100%-40px)]'
+      }`}>
+        <div className={`flex items-start`}>
+          <div className={`${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'} rounded-lg shadow-lg border overflow-hidden transition-all duration-300 ${
+            showMapLayers ? 'w-auto p-2' : 'w-0 p-0'
+          }`}>
+            <div className="space-y-1">
+              {[
+                { type: 'street', label: 'Street', icon: MapIcon },
+                { type: 'satellite', label: 'Satellite', icon: Globe },
+                { type: 'terrain', label: 'Terrain', icon: Layers }
+              ].map(({ type, label, icon: Icon }) => (
+                <button
+                  key={type}
+                  onClick={() => setMapType(type)}
+                  className={`w-full p-2 text-left rounded flex items-center space-x-2 transition-colors whitespace-nowrap ${
+                    mapType === type
+                      ? 'bg-red-600 text-white'
+                      : isDarkMode
+                        ? 'hover:bg-gray-700 text-gray-300'
+                        : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="text-sm">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Tab to pull out/collapse */}
+          <button
+            onClick={() => setShowMapLayers(!showMapLayers)}
+            className={`${isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-white border-gray-200 text-gray-700'} border border-l-0 rounded-r-lg shadow-lg p-2 hover:bg-opacity-90 transition-colors`}
+            title={showMapLayers ? 'Hide map layers' : 'Show map layers'}
+          >
+            <Layers className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 };
 

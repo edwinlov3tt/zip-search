@@ -26,6 +26,8 @@ export const SearchProvider = ({ children }) => {
   const [availableCities, setAvailableCities] = useState([]);
 
   // Search state
+  const [isSearchMode, setIsSearchMode] = useState(true); // Start in search mode for radius search
+  const [isSearching, setIsSearching] = useState(false); // For autocomplete loading
   const [isLoading, setIsLoading] = useState(false);
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [searchError, setSearchError] = useState(null);
@@ -35,6 +37,7 @@ export const SearchProvider = ({ children }) => {
   // Radius search
   const [radiusCenter, setRadiusCenter] = useState(null);
   const [placingRadius, setPlacingRadius] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
   // Upload search
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -51,19 +54,27 @@ export const SearchProvider = ({ children }) => {
 
   // Reset function
   const handleReset = useCallback(() => {
-    setSearchTerm('');
-    setSelectedState('');
-    setSelectedCounty('');
-    setSelectedCity('');
-    setAvailableCounties([]);
-    setAvailableCities([]);
-    setSearchPerformed(false);
-    setApiError(null);
-    setRadiusCenter(null);
-    setPlacingRadius(false);
-    setUploadedFile(null);
-    setUploadError(null);
-  }, []);
+    if (searchMode === 'radius') {
+      // For radius mode, toggle between search and place mode
+      setIsSearchMode(true);
+      setRadiusCenter(null);
+      setSearchPerformed(false);
+    } else {
+      // For other modes, full reset
+      setSearchTerm('');
+      setSelectedState('');
+      setSelectedCounty('');
+      setSelectedCity('');
+      setAvailableCounties([]);
+      setAvailableCities([]);
+      setSearchPerformed(false);
+      setApiError(null);
+      setRadiusCenter(null);
+      setPlacingRadius(false);
+      setUploadedFile(null);
+      setUploadError(null);
+    }
+  }, [searchMode]);
 
   // Search mode change handler
   const handleSearchModeChange = useCallback((newMode) => {
@@ -95,6 +106,10 @@ export const SearchProvider = ({ children }) => {
     setAvailableCities,
 
     // Search state
+    isSearchMode,
+    setIsSearchMode,
+    isSearching,
+    setIsSearching,
     isLoading,
     setIsLoading,
     searchPerformed,
@@ -111,6 +126,8 @@ export const SearchProvider = ({ children }) => {
     setRadiusCenter,
     placingRadius,
     setPlacingRadius,
+    selectedLocation,
+    setSelectedLocation,
 
     // Upload search
     uploadedFile,
