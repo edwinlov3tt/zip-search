@@ -9,7 +9,7 @@ import SearchControls from './components/Search/SearchControls';
 import MapContainer from './components/Map/MapContainer';
 import MapLayerSelector from './components/Map/MapLayerSelector';
 import ResultsDrawer from './components/Results/ResultsDrawer';
-import ToastNotification from './components/Common/ToastNotification';
+import ToastNotification from './components/common/ToastNotification';
 import CustomExportModal from './components/Modals/CustomExportModal';
 import HeaderMappingModal from './components/Modals/HeaderMappingModal';
 import ModeSwitchModal from './components/Modals/ModeSwitchModal';
