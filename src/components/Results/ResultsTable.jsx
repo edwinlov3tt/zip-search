@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowUpDown, X } from 'lucide-react';
 import { useUI } from '../../contexts/UIContext';
 import { useResults } from '../../contexts/ResultsContext';
+import { useSearch } from '../../contexts/SearchContext';
 
 const ResultsTable = ({
   activeTab,
@@ -13,6 +14,7 @@ const ResultsTable = ({
 }) => {
   const { isDarkMode } = useUI();
   const { removeItem } = useResults();
+  const { activeRadiusSearchId, setActiveRadiusSearchId, radiusSearches } = useSearch();
 
   // Define columns for each tab type
   const getColumns = () => {
@@ -26,7 +28,8 @@ const ResultsTable = ({
           { key: 'lat', label: 'Latitude' },
           { key: 'lng', label: 'Longitude' },
           { key: 'area', label: 'Area (sq mi)' },
-          { key: 'overlap', label: 'Overlap %' }
+          { key: 'overlap', label: 'Overlap %' },
+          { key: 'searchSequences', label: 'Search' }
         ];
       case 'cities':
         return [
@@ -34,21 +37,24 @@ const ResultsTable = ({
           { key: 'state', label: 'State' },
           { key: 'county', label: 'County' },
           { key: 'lat', label: 'Latitude' },
-          { key: 'lng', label: 'Longitude' }
+          { key: 'lng', label: 'Longitude' },
+          { key: 'searchSequences', label: 'Search' }
         ];
       case 'counties':
         return [
           { key: 'name', label: 'County Name' },
           { key: 'state', label: 'State' },
           { key: 'lat', label: 'Latitude' },
-          { key: 'lng', label: 'Longitude' }
+          { key: 'lng', label: 'Longitude' },
+          { key: 'searchSequences', label: 'Search' }
         ];
       case 'states':
         return [
           { key: 'name', label: 'State Name' },
           { key: 'state', label: 'Code' },
           { key: 'lat', label: 'Latitude' },
-          { key: 'lng', label: 'Longitude' }
+          { key: 'lng', label: 'Longitude' },
+          { key: 'searchSequences', label: 'Search' }
         ];
       default:
         return [];
@@ -56,6 +62,15 @@ const ResultsTable = ({
   };
 
   const columns = getColumns();
+
+  const tabToType = {
+    zips: 'zip',
+    cities: 'city',
+    counties: 'county',
+    states: 'state'
+  };
+
+  const resolveType = () => tabToType[activeTab] || activeTab;
 
   const getRemoveTooltip = () => {
     switch (activeTab) {
@@ -82,6 +97,47 @@ const ResultsTable = ({
     }
     if (key === 'overlap') {
       return `${result[key] || 0}%`;
+    }
+
+    if (key === 'searchSequences') {
+      const sequences = result.searchSequences || [];
+      const searchIds = result.searchIds || [];
+      if (sequences.length === 0) {
+        return <span className="text-xs text-gray-400">-</span>;
+      }
+      return (
+        <div className="flex flex-wrap gap-1">
+          {sequences.map((seq, index) => {
+            // Get the corresponding search ID for this sequence
+            const searchId = searchIds[index];
+            const isActive = searchId === activeRadiusSearchId;
+
+            return (
+              <span
+                key={seq}
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent row selection
+                  if (searchId && setActiveRadiusSearchId) {
+                    setActiveRadiusSearchId(searchId);
+                  }
+                }}
+                className={`inline-flex items-center justify-center min-w-[1.5rem] px-1 py-0.5 rounded border text-[11px] font-semibold cursor-pointer transition-all ${
+                  isActive
+                    ? isDarkMode
+                      ? 'border-red-400 bg-red-900/40 text-red-200'
+                      : 'border-red-500 bg-red-50 text-red-600'
+                    : isDarkMode
+                      ? 'border-gray-500 bg-gray-700/40 text-gray-400 hover:border-gray-400 hover:text-gray-300'
+                      : 'border-gray-400 bg-gray-100 text-gray-500 hover:border-gray-500 hover:text-gray-600'
+                }`}
+                title={`Search ${seq}${isActive ? ' (active)' : ' (click to activate)'}`}
+              >
+                {seq}
+              </span>
+            );
+          })}
+        </div>
+      );
     }
 
     // For state code in states tab
@@ -119,11 +175,11 @@ const ResultsTable = ({
         {data.map(result => (
           <tr
             key={result.id}
-            data-result-id={`${activeTab.slice(0, -1)}-${result.id}`}
-            onClick={() => handleResultSelect(activeTab.slice(0, -1), result)}
-            onDoubleClick={() => handleResultDoubleClick(activeTab.slice(0, -1), result)}
+            data-result-id={`${resolveType()}-${result.id}`}
+            onClick={() => handleResultSelect(resolveType(), result)}
+            onDoubleClick={() => handleResultDoubleClick(resolveType(), result)}
             className={`transition-colors cursor-pointer ${
-              isResultSelected(activeTab.slice(0, -1), result.id)
+              isResultSelected(resolveType(), result.id)
                 ? isDarkMode
                   ? 'bg-red-800/40 border-y border-red-400'
                   : 'bg-red-100 border-y border-red-300'
@@ -135,7 +191,7 @@ const ResultsTable = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation(); // Prevent row click when removing
-                  removeItem(activeTab.slice(0, -1), result);
+                  removeItem(resolveType(), result);
                 }}
                 className="text-red-500 hover:text-red-700 p-1"
                 title={getRemoveTooltip()}
@@ -147,7 +203,7 @@ const ResultsTable = ({
               <td
                 key={col.key}
                 className={`px-4 py-2 ${
-                  col.key === columns[0].key
+                  col.key === columns[0].key && col.key !== 'searchSequences'
                     ? `font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`
                     : `${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`
                 }`}

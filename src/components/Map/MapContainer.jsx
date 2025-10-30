@@ -6,10 +6,12 @@ import MapMarkers from './MapMarkers';
 import BoundaryLayers from './BoundaryLayers';
 import { useMap } from '../../contexts/MapContext';
 import { useResults } from '../../contexts/ResultsContext';
+import { useSearch } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
 
 const MapContainer = ({
   searchMode,
+  addressSubMode,
   isSearchMode,
   handleMapClick,
   handleViewportChange,
@@ -18,8 +20,11 @@ const MapContainer = ({
   selectedLocation,
   radius,
   radiusCenter,
+  radiusDisplaySettings,
   handleResultSelect,
-  geocodingService
+  geocodingService,
+  radiusSearches,
+  activeRadiusSearchId
 }) => {
   const {
     mapType,
@@ -37,11 +42,14 @@ const MapContainer = ({
     showStateBoundaries,
     stateBoundariesData,
     showCityBoundaries,
-    cityBoundariesData
+    cityBoundariesData,
+    showMarkers
   } = useMap();
 
   const {
     zipResults,
+    addressResults,
+    geocodeResults,
     countyResults,
     removedItems,
     getRemovalKey,
@@ -49,7 +57,17 @@ const MapContainer = ({
     setZipResults
   } = useResults();
 
+  const { addressSearches, activeAddressSearchId } = useSearch();
+
   const { activeTab, setActiveTab } = useUI();
+
+  const showRadiusOverlay = radiusDisplaySettings?.showRadius !== false;
+
+  // Determine if we should show crosshair cursor
+  const shouldShowCrosshair = searchMode === 'radius' || (searchMode === 'address' && addressSubMode === 'radius');
+
+  // Determine if we should show drawing controls
+  const shouldShowDrawingControls = searchMode === 'polygon' || (searchMode === 'address' && addressSubMode === 'polygon');
 
   // Get tile layer URL based on map type
   const getTileLayer = () => {
@@ -71,7 +89,7 @@ const MapContainer = ({
       zoomControl={false}
       ref={mapRef}
       style={{
-        cursor: searchMode === 'radius' && isSearchMode ? 'crosshair' : undefined
+        cursor: shouldShowCrosshair ? 'crosshair' : undefined
       }}
     >
       <TileLayer
@@ -83,12 +101,12 @@ const MapContainer = ({
         center={mapCenter}
         zoom={mapZoom}
         onMapClick={handleMapClick}
-        crosshairCursor={searchMode === 'radius' && isSearchMode}
+        crosshairCursor={shouldShowCrosshair}
         onViewportChange={handleViewportChange}
       />
 
-      {/* Drawing Controls - Only for Polygon Search */}
-      {searchMode === 'polygon' && (
+      {/* Drawing Controls - For Polygon Search and Address Polygon Mode */}
+      {shouldShowDrawingControls && (
         <DrawingControls
           featureGroupRef={featureGroupRef}
           onCreated={onCreated}
@@ -99,6 +117,8 @@ const MapContainer = ({
       {/* Map Markers */}
       <MapMarkers
         zipResults={zipResults}
+        addressResults={addressResults}
+        geocodeResults={geocodeResults}
         selectedLocation={selectedLocation}
         radius={radius}
         radiusCenter={radiusCenter}
@@ -109,6 +129,12 @@ const MapContainer = ({
         geocodingService={geocodingService}
         removedItems={removedItems}
         getRemovalKey={getRemovalKey}
+        showRadius={showRadiusOverlay}
+        showMarkers={showMarkers}
+        radiusSearches={radiusSearches}
+        activeRadiusSearchId={activeRadiusSearchId}
+        addressSearches={addressSearches}
+        activeAddressSearchId={activeAddressSearchId}
       />
 
       {/* Boundary Layers */}

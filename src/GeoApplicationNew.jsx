@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { MapProvider } from './contexts/MapContext';
 import { SearchProvider } from './contexts/SearchContext';
 import { ResultsProvider } from './contexts/ResultsContext';
@@ -12,6 +12,7 @@ import ResultsDrawer from './components/Results/ResultsDrawer';
 import ToastNotification from './components/Common/ToastNotification';
 import CustomExportModal from './components/Modals/CustomExportModal';
 import HeaderMappingModal from './components/Modals/HeaderMappingModal';
+import ModeSwitchModal from './components/Modals/ModeSwitchModal';
 
 import { useSearch } from './contexts/SearchContext';
 import { useMap } from './contexts/MapContext';
@@ -37,13 +38,42 @@ const GeoApplicationContent = () => {
     handleAutocompleteSelect,
     handleCSVUpload,
     handleRemoveFile,
+    handleGeocodeCSVUpload,
+    handleRemoveGeocodeFile,
+    processGeocodeCSV,
     handleResetSearch,
+    handleMapClickSearch,
     setSelectedState,
     setSelectedCounty,
     setSelectedCity,
     hierarchyLocations,
     selectedLocation,
-    radiusCenter
+    radiusCenter,
+    radiusDisplaySettings,
+    radiusSearches,
+    activeRadiusSearchId,
+    placingRadius,
+    performSingleShapeSearch,
+    removePolygonSearchByShapeId,
+    addressSubMode,
+    performSingleShapeSearchAddress,
+    removeAddressSearchByShapeId,
+    // CSV mapping modal state
+    showHeaderMappingModal,
+    setShowHeaderMappingModal,
+    csvHeaders,
+    csvPreviewData,
+    columnMapping,
+    setColumnMapping,
+    processCSVWithMapping,
+    processingProgress,
+    geocodeProgress,
+    // Mode switch modal
+    showModeSwitchModal,
+    pendingMode,
+    handleClearAndSwitch,
+    handleDownloadAndSwitch,
+    handleCancelModeSwitch
   } = useSearch();
 
   const {
@@ -55,7 +85,10 @@ const GeoApplicationContent = () => {
     handleMapClick,
     handleViewportChange,
     onCreated,
-    onDeleted
+    onDeleted,
+    setMapClickCallback,
+    setOnShapeCreatedCallback,
+    setOnShapeDeletedCallback
   } = useMap();
 
   const {
@@ -63,6 +96,8 @@ const GeoApplicationContent = () => {
     cityResults,
     countyResults,
     stateResults,
+    filteredAddressResults,
+    filteredGeocodeResults,
     filteredZipResults,
     filteredCityResults,
     filteredCountyResults,
@@ -86,8 +121,71 @@ const GeoApplicationContent = () => {
     handleMouseDown,
     cycleDrawerState,
     copyToClipboard,
-    exportSimpleCsv
+    exportSimpleCsv,
+    activeTab
   } = useUI();
+
+  // Wire up map click handler for radius search
+  useEffect(() => {
+    if (setMapClickCallback) {
+      setMapClickCallback(() => handleMapClickSearch);
+    }
+    return () => {
+      if (setMapClickCallback) {
+        setMapClickCallback(null);
+      }
+    };
+  }, [setMapClickCallback, handleMapClickSearch]);
+
+  // Wire up polygon search callbacks
+  useEffect(() => {
+    const isPolygonMode = searchMode === 'polygon';
+    const isAddressPolygonMode = searchMode === 'address' && addressSubMode === 'polygon';
+
+    if ((isPolygonMode || isAddressPolygonMode) && setOnShapeCreatedCallback && setOnShapeDeletedCallback) {
+      // Set callback for when shapes are created
+      setOnShapeCreatedCallback(() => (shape) => {
+        if (isAddressPolygonMode && performSingleShapeSearchAddress) {
+          performSingleShapeSearchAddress(shape, true); // appendResults = true for address polygon searches
+        } else if (isPolygonMode) {
+          performSingleShapeSearch(shape, true); // appendResults = true for polygon searches
+        }
+      });
+
+      // Set callback for when shapes are deleted
+      setOnShapeDeletedCallback(() => (deletedShapes) => {
+        deletedShapes.forEach(shape => {
+          if (isAddressPolygonMode && removeAddressSearchByShapeId) {
+            removeAddressSearchByShapeId(shape.id);
+          } else if (isPolygonMode) {
+            removePolygonSearchByShapeId(shape.id);
+          }
+        });
+      });
+    } else if (setOnShapeCreatedCallback && setOnShapeDeletedCallback) {
+      // Clear callbacks when not in polygon mode
+      setOnShapeCreatedCallback(null);
+      setOnShapeDeletedCallback(null);
+    }
+
+    return () => {
+      if (setOnShapeCreatedCallback && setOnShapeDeletedCallback) {
+        setOnShapeCreatedCallback(null);
+        setOnShapeDeletedCallback(null);
+      }
+    };
+  }, [searchMode, addressSubMode, setOnShapeCreatedCallback, setOnShapeDeletedCallback, performSingleShapeSearch, removePolygonSearchByShapeId, performSingleShapeSearchAddress, removeAddressSearchByShapeId]);
+
+  // Wire up map interaction for result selection with zoom logic
+  const { setMapInteractionCallback, markersRef } = useResults();
+  const { handleResultMapInteraction } = useMap();
+
+  useEffect(() => {
+    if (setMapInteractionCallback && handleResultMapInteraction) {
+      // Wrap in a function to avoid React treating it as a function updater
+      setMapInteractionCallback(() => handleResultMapInteraction);
+    }
+  }, [setMapInteractionCallback, handleResultMapInteraction]);
 
   return (
     <div className={`h-screen flex flex-col ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -110,6 +208,8 @@ const GeoApplicationContent = () => {
           handleAutocompleteSelect={handleAutocompleteSelect}
           handleCSVUpload={handleCSVUpload}
           handleRemoveFile={handleRemoveFile}
+          handleGeocodeCSVUpload={handleGeocodeCSVUpload}
+          handleRemoveGeocodeFile={handleRemoveGeocodeFile}
           handleResetSearch={handleResetSearch}
           setSelectedState={setSelectedState}
           setSelectedCounty={setSelectedCounty}
@@ -123,6 +223,7 @@ const GeoApplicationContent = () => {
 
           <MapContainer
             searchMode={searchMode}
+            addressSubMode={addressSubMode}
             isSearchMode={isSearchMode}
             handleMapClick={handleMapClick}
             handleViewportChange={handleViewportChange}
@@ -131,6 +232,7 @@ const GeoApplicationContent = () => {
             selectedLocation={selectedLocation}
             radius={radius}
             radiusCenter={radiusCenter}
+            radiusDisplaySettings={radiusDisplaySettings}
             handleResultSelect={handleResultSelect}
             geocodingService={{
               formatDisplayName: (location) => {
@@ -139,6 +241,8 @@ const GeoApplicationContent = () => {
                 return `${location.lat}, ${location.lng}`;
               }
             }}
+            radiusSearches={radiusSearches}
+            activeRadiusSearchId={activeRadiusSearchId}
           />
         </div>
 
@@ -154,6 +258,8 @@ const GeoApplicationContent = () => {
           copyToClipboard={copyToClipboard}
           exportSimpleCsv={exportSimpleCsv}
           getTotalExcludedCount={getTotalExcludedCount}
+          filteredAddressResults={filteredAddressResults}
+          filteredGeocodeResults={filteredGeocodeResults}
           filteredZipResults={filteredZipResults}
           filteredCityResults={filteredCityResults}
           filteredCountyResults={filteredCountyResults}
@@ -166,13 +272,44 @@ const GeoApplicationContent = () => {
         <CustomExportModal
           isOpen={showCustomExport}
           onClose={() => setShowCustomExport(false)}
-          data={getCurrentData()}
+          data={getCurrentData(activeTab)}
           activeTab={activeTab}
           isDarkMode={isDarkMode}
+          allData={{
+            zips: zipResults,
+            cities: cityResults,
+            counties: countyResults,
+            states: stateResults
+          }}
         />
       )}
 
-      {/* Add HeaderMappingModal if needed */}
+      {/* Header Mapping Modal for CSV uploads */}
+      {showHeaderMappingModal && (
+        <HeaderMappingModal
+          isOpen={showHeaderMappingModal}
+          onClose={() => setShowHeaderMappingModal(false)}
+          headers={csvHeaders}
+          previewData={csvPreviewData}
+          columnMapping={columnMapping}
+          setColumnMapping={setColumnMapping}
+          onConfirm={searchMode === 'geocode' ? processGeocodeCSV : processCSVWithMapping}
+          isDarkMode={isDarkMode}
+          processingProgress={searchMode === 'geocode' ? geocodeProgress : processingProgress}
+          isGeocodeMode={searchMode === 'geocode'}
+        />
+      )}
+
+      {/* Mode Switch Modal */}
+      <ModeSwitchModal
+        isOpen={showModeSwitchModal}
+        onClose={handleCancelModeSwitch}
+        onClearAndSwitch={handleClearAndSwitch}
+        onDownloadAndSwitch={handleDownloadAndSwitch}
+        fromMode={searchMode}
+        toMode={pendingMode}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };
@@ -184,13 +321,13 @@ const GeoApplicationContent = () => {
 const GeoApplicationNew = () => {
   return (
     <UIProvider>
-      <SearchProvider>
+      <ResultsProvider>
         <MapProvider>
-          <ResultsProvider>
+          <SearchProvider>
             <GeoApplicationContent />
-          </ResultsProvider>
+          </SearchProvider>
         </MapProvider>
-      </SearchProvider>
+      </ResultsProvider>
     </UIProvider>
   );
 };

@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useRef } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import zipBoundariesService from '../services/zipBoundariesService';
+import stateBoundariesService from '../services/stateBoundariesService';
 
 const MapContext = createContext();
 
@@ -43,10 +45,199 @@ export const MapProvider = ({ children }) => {
   // Map layer selector state
   const [showMapLayers, setShowMapLayers] = useState(false);
 
+  // Marker visibility state
+  const [showMarkers, setShowMarkers] = useState(true);
+
   // Refs
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const featureGroupRef = useRef(null);
+
+  // Map click handler for radius placement
+  const [mapClickCallback, setMapClickCallback] = useState(null);
+
+  const handleMapClick = useCallback((e) => {
+    if (e && e.latlng && mapClickCallback) {
+      mapClickCallback(e.latlng);
+    }
+  }, [mapClickCallback]);
+
+  // Handler for centering and zooming map when results are clicked
+  const handleResultMapInteraction = useCallback(async ({ type, result, center, zoom, bounds, padding }) => {
+    if (!mapRef.current) return;
+
+    // Handle special fitBounds type
+    if (type === 'fitBounds' && bounds) {
+      // Fit the map to show all bounds with padding
+      mapRef.current.fitBounds(bounds, {
+        animate: true,
+        padding: padding || 50
+      });
+      // Clear any focused items
+      setFocusedZipCode(null);
+      return;
+    }
+
+    // Set the map view directly with animation (don't update state to avoid conflicts)
+    mapRef.current.setView(center, zoom, { animate: true });
+
+    // Additional logic based on type (can be extended later for boundaries, etc.)
+    switch (type) {
+      case 'zip':
+        // For ZIP codes, we might want to show boundaries
+        setFocusedZipCode(result.zipCode);
+        // Use functional update to avoid dependency on showZipBoundaries
+        setShowZipBoundaries(prev => prev || true);
+        break;
+      case 'city':
+        // For cities, clear ZIP focus
+        setFocusedZipCode(null);
+        break;
+      case 'county':
+        // For counties, show county boundaries
+        setFocusedZipCode(null);
+        setShowCountyBorders(true);
+        setSelectedCountyBoundary({ name: result.name, state: result.state });
+        break;
+      case 'state':
+        // For states, show state boundaries
+        setFocusedZipCode(null);
+        // Use functional update to avoid dependency on showStateBoundaries
+        setShowStateBoundaries(prev => prev || true);
+        break;
+    }
+  }, []); // Remove dependencies to prevent recreation
+
+  // Viewport change handler for boundary loading
+  const handleViewportChange = useCallback((viewport) => {
+    setCurrentViewport(viewport);
+  }, []);
+
+  // Drawing handlers for polygon search
+  const [onShapeCreatedCallback, setOnShapeCreatedCallback] = useState(null);
+  const [onShapeDeletedCallback, setOnShapeDeletedCallback] = useState(null);
+
+  const onCreated = useCallback((e) => {
+    const { layer, layerType } = e;
+    const newShape = { layer, type: layerType, id: layer._leaflet_id };
+    setDrawnShapes(prev => [...prev, newShape]);
+
+    // Trigger search for this shape if callback is set
+    if (onShapeCreatedCallback) {
+      onShapeCreatedCallback(newShape);
+    }
+  }, [onShapeCreatedCallback]);
+
+  const onDeleted = useCallback((e) => {
+    const { layers } = e;
+    const deletedIds = [];
+    const deletedShapes = [];
+
+    layers.eachLayer((layer) => {
+      deletedIds.push(layer._leaflet_id);
+      // Find the shape being deleted
+      const shape = drawnShapes.find(s => s.layer._leaflet_id === layer._leaflet_id);
+      if (shape) {
+        deletedShapes.push(shape);
+      }
+    });
+
+    setDrawnShapes(prev =>
+      prev.filter(shape => !deletedIds.includes(shape.layer._leaflet_id))
+    );
+
+    // Notify about deleted shapes if callback is set
+    if (onShapeDeletedCallback && deletedShapes.length > 0) {
+      onShapeDeletedCallback(deletedShapes);
+    }
+  }, [drawnShapes, onShapeDeletedCallback]);
+
+  // Load county boundaries from static file
+  const loadCountyBoundaries = useCallback(async () => {
+    try {
+      console.log('Loading county boundaries from static file...');
+      const url = '/boundaries/us-counties.geojson';
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setCountyBoundaries(data);
+        console.log('County boundaries loaded successfully');
+      } else {
+        console.warn(`County boundaries file not accessible (${response.status})`);
+      }
+    } catch (error) {
+      console.error('Failed to load county boundaries:', error);
+    }
+  }, []);
+
+  // Effect to load county boundaries when toggled
+  useEffect(() => {
+    if (showCountyBorders && !countyBoundaries) {
+      loadCountyBoundaries();
+    }
+  }, [showCountyBorders, countyBoundaries, loadCountyBoundaries]);
+
+  // Load ZIP boundaries for viewport
+  const loadZipBoundariesForViewport = useCallback(async () => {
+    if (!currentViewport || !showZipBoundaries) return;
+
+    setLoadingZipBoundaries(true);
+    try {
+      // For now, just use cached boundaries or create empty collection
+      const cachedBoundaries = zipBoundariesService.getAllCachedBoundaries();
+      if (cachedBoundaries && cachedBoundaries.features.length > 0) {
+        console.log(`Loaded ${cachedBoundaries.features.length} cached ZIP boundaries`);
+        setZipBoundariesData(cachedBoundaries);
+      } else {
+        // Create empty feature collection for now
+        setZipBoundariesData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load ZIP boundaries:', error);
+    } finally {
+      setLoadingZipBoundaries(false);
+    }
+  }, [currentViewport, showZipBoundaries]);
+
+  // Effect to load ZIP boundaries when toggled or viewport changes
+  useEffect(() => {
+    if (showZipBoundaries) {
+      loadZipBoundariesForViewport();
+    } else {
+      setZipBoundariesData(null);
+    }
+  }, [showZipBoundaries, currentViewport, loadZipBoundariesForViewport]);
+
+  // Simple state boundary loading (mock for now)
+  const loadStateBoundaries = useCallback(async () => {
+    if (!showStateBoundaries) return;
+
+    setLoadingStateBoundaries(true);
+    try {
+      // For now, create empty collection - would normally fetch from API
+      console.log('State boundaries loading disabled (no RPC function)');
+      setStateBoundariesData({
+        type: 'FeatureCollection',
+        features: []
+      });
+    } catch (error) {
+      console.error('Failed to load state boundaries:', error);
+    } finally {
+      setLoadingStateBoundaries(false);
+    }
+  }, [showStateBoundaries]);
+
+  // Effect to load state boundaries when toggled
+  useEffect(() => {
+    if (showStateBoundaries) {
+      loadStateBoundaries();
+    } else {
+      setStateBoundariesData(null);
+    }
+  }, [showStateBoundaries, loadStateBoundaries]);
 
   const value = {
     // Map state
@@ -105,10 +296,24 @@ export const MapProvider = ({ children }) => {
     showMapLayers,
     setShowMapLayers,
 
+    // Marker visibility
+    showMarkers,
+    setShowMarkers,
+
     // Refs
     mapRef,
     markersRef,
-    featureGroupRef
+    featureGroupRef,
+
+    // Handlers
+    handleMapClick,
+    handleViewportChange,
+    onCreated,
+    onDeleted,
+    setMapClickCallback,
+    setOnShapeCreatedCallback,
+    setOnShapeDeletedCallback,
+    handleResultMapInteraction
   };
 
   return <MapContext.Provider value={value}>{children}</MapContext.Provider>;

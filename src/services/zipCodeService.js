@@ -1,56 +1,9 @@
+import apiClient from './apiClient';
 import { OptimizedStaticService } from './optimizedStaticService';
 import supabaseService from './supabaseService';
 
-// Single backend base URL (no localhost default in production)
-const API_BASE_URL = import.meta.env.VITE_API_URL;
-
-function requireApiBase() {
-  if (!API_BASE_URL) {
-    throw new Error('Missing VITE_API_URL. Configure your backend API base URL.');
-  }
-}
-
-function isLocalhostHost(host) {
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-}
-
-async function fetchWithLocalhostFallback(path, fetchInit) {
-  // If explicit base provided via env, use it only
-  if (API_BASE_URL) {
-    return fetch(`${API_BASE_URL}${path}`, fetchInit);
-  }
-
-  // Allow convenient localhost testing across common ports without env config
-  if (typeof window !== 'undefined' && isLocalhostHost(window.location.hostname)) {
-    const origin = window.location.origin; // e.g., http://localhost:5173
-    const commonPorts = [5173, 3001, 8000, 8001, 8080, 5000, 7000];
-    const bases = [
-      `${origin}/api`,
-      ...commonPorts.map(p => `http://localhost:${p}/api`),
-      ...commonPorts.map(p => `http://127.0.0.1:${p}/api`),
-    ];
-
-    // Try candidates sequentially with short timeouts
-    for (const base of bases) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1500);
-        const res = await fetch(`${base}${path}`, { ...(fetchInit || {}), signal: controller.signal });
-        clearTimeout(timeout);
-        if (res.ok) return res;
-        // On HTTP error, continue to next candidate
-      } catch (_) {
-        // Network error/timeout; try next candidate
-      }
-    }
-  }
-
-  // Non-localhost or all candidates failed: behave as fail-fast
-  requireApiBase();
-  return fetch(`${API_BASE_URL}${path}`, fetchInit);
-}
 const USE_SUPABASE = true; // Use Supabase as primary source
-const USE_STATIC_DATA = false; // Keep explicit flag; we still fall back dynamically
+const USE_STATIC_DATA = false; // Keep explicit flag for static fallback
 
 // API service functions for zip code data
 export class ZipCodeService {
@@ -62,10 +15,10 @@ export class ZipCodeService {
         if (supabaseResult && Array.isArray(supabaseResult.results) && supabaseResult.results.length > 0) {
           return supabaseResult;
         }
-        // If Supabase returns no results (empty DB/RLS), try static fallback for supported queries
+        // If Supabase returns no results, try static fallback for supported queries
         return await OptimizedStaticService.search(params);
       } catch (e) {
-        // On error, try static as a safety net
+        console.warn('Supabase search failed, trying static fallback:', e);
         return await OptimizedStaticService.search(params);
       }
     }
@@ -75,34 +28,32 @@ export class ZipCodeService {
       return OptimizedStaticService.search(params);
     }
 
-    const queryParams = new URLSearchParams();
-
-    if (params.query) queryParams.append('query', params.query);
-    if (params.lat && params.lng) {
-      queryParams.append('lat', params.lat);
-      queryParams.append('lng', params.lng);
-    }
-    if (params.radius) queryParams.append('radius', params.radius);
-    if (params.state) queryParams.append('state', params.state);
-    if (params.county) queryParams.append('county', params.county);
-    if (params.city) queryParams.append('city', params.city);
-    if (params.polygon) queryParams.append('polygon', JSON.stringify(params.polygon));
-    if (params.limit) queryParams.append('limit', params.limit);
-    if (params.offset) queryParams.append('offset', params.offset);
-
+    // Use the centralized API client
     try {
-      const response = await fetchWithLocalhostFallback(`/search?${queryParams}`);
-      if (!response.ok) {
-        throw new Error(`Search failed: ${response.statusText}`);
+      const queryParams = {};
+
+      if (params.query) queryParams.query = params.query;
+      if (params.lat && params.lng) {
+        queryParams.lat = params.lat;
+        queryParams.lng = params.lng;
       }
-      const apiResult = await response.json();
+      if (params.radius) queryParams.radius = params.radius;
+      if (params.state) queryParams.state = params.state;
+      if (params.county) queryParams.county = params.county;
+      if (params.city) queryParams.city = params.city;
+      if (params.polygon) queryParams.polygon = JSON.stringify(params.polygon);
+      if (params.limit) queryParams.limit = params.limit;
+      if (params.offset) queryParams.offset = params.offset;
+
+      const apiResult = await apiClient.get('search', queryParams);
+
       if (!apiResult || !apiResult.results || apiResult.results.length === 0) {
         // As a last resort, use static
         return await OptimizedStaticService.search(params);
       }
       return apiResult;
     } catch (error) {
-      console.warn('API failed, falling back to static data:', error);
+      console.warn('API search failed, falling back to static data:', error);
       return OptimizedStaticService.search(params);
     }
   }
@@ -111,7 +62,6 @@ export class ZipCodeService {
     if (USE_SUPABASE) {
       try {
         const states = await supabaseService.getStates();
-        // Only fall back if Supabase returns 0
         if (Array.isArray(states) && states.length > 0) {
           return states;
         }
@@ -129,13 +79,15 @@ export class ZipCodeService {
     }
 
     try {
-      const response = await fetchWithLocalhostFallback(`/states`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch states: ${response.statusText}`);
+      const states = await apiClient.get('states');
+      if (Array.isArray(states) && states.length > 0) {
+        return states;
       }
-      return response.json();
+      // Fall back to static if API returns empty
+      const result = await OptimizedStaticService.getStates();
+      return result.states || [];
     } catch (error) {
-      console.warn('API failed, falling back to static data:', error);
+      console.warn('API getStates failed, falling back to static data:', error);
       const result = await OptimizedStaticService.getStates();
       return result.states || [];
     }
@@ -158,17 +110,16 @@ export class ZipCodeService {
       return result.counties || [];
     }
 
-    const queryParams = new URLSearchParams();
-    if (state) queryParams.append('state', state);
-
     try {
-      const response = await fetchWithLocalhostFallback(`/counties?${queryParams}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch counties: ${response.statusText}`);
+      const counties = await apiClient.get('counties', state ? { state } : {});
+      if (Array.isArray(counties) && counties.length > 0) {
+        return counties;
       }
-      return response.json();
+      // Fall back to static if API returns empty
+      const result = await OptimizedStaticService.getCounties({ state });
+      return result.counties || [];
     } catch (error) {
-      console.warn('API failed, falling back to static data:', error);
+      console.warn('API getCounties failed, falling back to static data:', error);
       const result = await OptimizedStaticService.getCounties({ state });
       return result.counties || [];
     }
@@ -191,18 +142,20 @@ export class ZipCodeService {
       return result.cities || [];
     }
 
-    const queryParams = new URLSearchParams();
-    if (state) queryParams.append('state', state);
-    if (county) queryParams.append('county', county);
-
     try {
-      const response = await fetchWithLocalhostFallback(`/cities?${queryParams}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch cities: ${response.statusText}`);
+      const params = {};
+      if (state) params.state = state;
+      if (county) params.county = county;
+
+      const cities = await apiClient.get('cities', params);
+      if (Array.isArray(cities) && cities.length > 0) {
+        return cities;
       }
-      return response.json();
+      // Fall back to static if API returns empty
+      const result = await OptimizedStaticService.getCities({ state, county });
+      return result.cities || [];
     } catch (error) {
-      console.warn('API failed, falling back to static data:', error);
+      console.warn('API getCities failed, falling back to static data:', error);
       const result = await OptimizedStaticService.getCities({ state, county });
       return result.cities || [];
     }
@@ -214,13 +167,14 @@ export class ZipCodeService {
     }
 
     try {
-      const response = await fetchWithLocalhostFallback(`/zipcode/${zipCode}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch zip code: ${response.statusText}`);
+      const result = await apiClient.get(`zipcode/${zipCode}`);
+      if (result) {
+        return result;
       }
-      return response.json();
+      // Fall back to static if API returns empty
+      return OptimizedStaticService.getZipCode({ zip: zipCode });
     } catch (error) {
-      console.warn('API failed, falling back to static data:', error);
+      console.warn('API getZipCode failed, falling back to static data:', error);
       return OptimizedStaticService.getZipCode({ zip: zipCode });
     }
   }
@@ -232,18 +186,11 @@ export class ZipCodeService {
     }
 
     try {
-      const response = await fetchWithLocalhostFallback(`/health`);
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.statusText}`);
-      }
-      const ct = response.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        return { status: 'unavailable', mode: 'no-api-json' };
-      }
-      return await response.json();
+      const health = await apiClient.healthCheck();
+      return health;
     } catch (error) {
       // If API is down, we're still healthy with static data
-      return { status: 'OK', mode: 'static-fallback' };
+      return { status: 'OK', mode: 'static-fallback', error: error.message };
     }
   }
 

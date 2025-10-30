@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Plus, Copy, FileDown } from 'lucide-react';
 import { useUI } from '../../contexts/UIContext';
 import { useResults } from '../../contexts/ResultsContext';
 
 const ExcludedItems = () => {
   const { excludedSubTab, setExcludedSubTab, isDarkMode } = useUI();
-  const { excludedGeos, restoreItem } = useResults();
+  const { excludedGeos, restoreItem, notFoundAddresses, restoreFromNotFound } = useResults();
 
   // Copy excluded items to clipboard
   const copyExcludedItems = () => {
@@ -79,7 +79,7 @@ const ExcludedItems = () => {
     URL.revokeObjectURL(url);
   };
 
-  const getSubTabs = () => {
+  const subTabs = useMemo(() => {
     const tabs = [];
     if (excludedGeos.zips.length > 0) {
       tabs.push({ key: 'zips', label: `ZIPs (${excludedGeos.zips.length})` });
@@ -93,8 +93,19 @@ const ExcludedItems = () => {
     if (excludedGeos.states.length > 0) {
       tabs.push({ key: 'states', label: `States (${excludedGeos.states.length})` });
     }
+    if (notFoundAddresses && notFoundAddresses.length > 0) {
+      tabs.push({ key: 'notFound', label: `Not Found (${notFoundAddresses.length})` });
+    }
     return tabs;
-  };
+  }, [excludedGeos, notFoundAddresses]);
+
+  useEffect(() => {
+    if (subTabs.length === 0) return;
+    const hasActive = subTabs.some(tab => tab.key === excludedSubTab);
+    if (!hasActive) {
+      setExcludedSubTab(subTabs[0].key);
+    }
+  }, [subTabs, excludedSubTab, setExcludedSubTab]);
 
   const renderTable = () => {
     if (excludedSubTab === 'zips' && excludedGeos.zips.length > 0) {
@@ -255,13 +266,67 @@ const ExcludedItems = () => {
       );
     }
 
+    if (excludedSubTab === 'notFound' && notFoundAddresses && notFoundAddresses.length > 0) {
+      return (
+        <table className="w-full text-sm">
+          <thead className={`sticky top-0 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <tr>
+              <th className="px-2 py-2 w-8"></th>
+              <th className={`px-4 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Business Name</th>
+              <th className={`px-4 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Address</th>
+              <th className={`px-4 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>City</th>
+              <th className={`px-4 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>State</th>
+              <th className={`px-4 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>ZIP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {notFoundAddresses.map((address, index) => (
+              <tr
+                key={`notfound-${index}`}
+                className={`transition-colors ${
+                  isDarkMode
+                    ? 'border-b border-gray-600 hover:bg-gray-700'
+                    : 'border-b border-gray-100 hover:bg-gray-50'
+                }`}
+              >
+                <td className="px-2 py-2">
+                  <button
+                    onClick={() => restoreFromNotFound(address)}
+                    className="text-green-500 hover:text-green-700 p-1"
+                    title="Remove from Not Found"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </td>
+                <td className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {address.businessName || '-'}
+                </td>
+                <td className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {address.addressString || address.fullAddress || '-'}
+                </td>
+                <td className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {address.components?.city || '-'}
+                </td>
+                <td className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {address.components?.state || '-'}
+                </td>
+                <td className={`px-4 py-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {address.components?.zip || '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
+
     return null;
   };
 
   return (
     <div className="flex flex-col h-full">
       {/* Actions and Sub-tabs Header */}
-      <div className={`flex items-center px-4 py-2 ${isDarkMode ? 'bg-gray-750' : 'bg-gray-50'}`}>
+      <div className={`flex items-center gap-3 px-4 py-2 ${isDarkMode ? 'bg-gray-750' : 'bg-gray-50'}`}>
         {/* Copy and CSV Export Buttons */}
         <div className="flex items-center space-x-2">
           <button
@@ -288,25 +353,28 @@ const ExcludedItems = () => {
           </button>
         </div>
 
+        {/* Divider */}
+        {subTabs.length > 0 && (
+          <div className={`self-stretch border-l ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`} />
+        )}
+
         {/* Sub-tabs for Excluded Items */}
-        <div className="ml-auto">
-          <div className="flex space-x-1">
-            {getSubTabs().map(subTab => (
-              <button
-                key={subTab.key}
-                onClick={() => setExcludedSubTab(subTab.key)}
-                className={`px-3 py-1 text-sm rounded transition-colors ${
-                  excludedSubTab === subTab.key
-                    ? 'bg-red-600 text-white'
-                    : isDarkMode
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
-                      : 'bg-white hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                {subTab.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-1">
+          {subTabs.map(subTab => (
+            <button
+              key={subTab.key}
+              onClick={() => setExcludedSubTab(subTab.key)}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                excludedSubTab === subTab.key
+                  ? 'bg-red-600 text-white'
+                  : isDarkMode
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
+                    : 'bg-white hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              {subTab.label}
+            </button>
+          ))}
         </div>
       </div>
 

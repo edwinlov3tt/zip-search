@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 
 const ResultsContext = createContext();
 
@@ -16,6 +16,9 @@ export const ResultsProvider = ({ children }) => {
   const [cityResults, setCityResults] = useState([]);
   const [countyResults, setCountyResults] = useState([]);
   const [stateResults, setStateResults] = useState([]);
+  const [addressResults, setAddressResults] = useState([]); // Street-level addresses
+  const [geocodeResults, setGeocodeResults] = useState([]); // Geocoded addresses
+  const [notFoundAddresses, setNotFoundAddresses] = useState([]); // Failed geocoding attempts
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(0);
@@ -33,6 +36,12 @@ export const ResultsProvider = ({ children }) => {
 
   // Selection state
   const [selectedResult, setSelectedResult] = useState(null);
+
+  // Map interaction callback (will be set by MapContext)
+  const [mapInteractionCallback, setMapInteractionCallback] = useState(null);
+
+  // Marker refs for popup interaction
+  const markersRef = useRef({});
 
   // Helper function to generate removal key
   const getRemovalKey = useCallback((type, item) => {
@@ -219,12 +228,34 @@ export const ResultsProvider = ({ children }) => {
     return results.filter(item => !removedItems.has(getRemovalKey(type, item)));
   }, [removedItems, getRemovalKey]);
 
+  // Geocode results management
+  const removeGeocodeResult = useCallback((geocodeItem) => {
+    const newRemovedItems = new Set(removedItems);
+    newRemovedItems.add(`geocode-${geocodeItem.id}`);
+    setRemovedItems(newRemovedItems);
+  }, [removedItems]);
+
+  const moveToNotFound = useCallback((geocodeItem) => {
+    setNotFoundAddresses(prev => [...prev, geocodeItem]);
+    removeGeocodeResult(geocodeItem);
+  }, [removeGeocodeResult]);
+
+  const restoreFromNotFound = useCallback((notFoundItem) => {
+    setNotFoundAddresses(prev => prev.filter(item => item.id !== notFoundItem.id));
+  }, []);
+
   // Clear results
   const clearResults = useCallback(() => {
     setZipResults([]);
     setCityResults([]);
     setCountyResults([]);
     setStateResults([]);
+    setAddressResults([]);
+    setGeocodeResults([]);
+    setNotFoundAddresses([]);
+    setTotalResults(0);
+    setHasMoreResults(false);
+    setCurrentPage(0);
     setExcludedGeos({
       zips: [],
       cities: [],
@@ -233,7 +264,231 @@ export const ResultsProvider = ({ children }) => {
     });
     setRemovedItems(new Set());
     setSelectedResult(null);
+  }, [setCurrentPage, setHasMoreResults, setTotalResults]);
+
+  // Sort configuration
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  // Sort handler
+  const handleSort = useCallback((key) => {
+    setSortConfig(prevConfig => ({
+      key,
+      direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+    }));
   }, []);
+
+  // Get filtered results - using useMemo to compute once per render
+  const filteredZipResults = useMemo(() => filterResults(zipResults, 'zip'), [filterResults, zipResults]);
+  const filteredCityResults = useMemo(() => filterResults(cityResults, 'city'), [filterResults, cityResults]);
+  const filteredCountyResults = useMemo(() => filterResults(countyResults, 'county'), [filterResults, countyResults]);
+  const filteredStateResults = useMemo(() => filterResults(stateResults, 'state'), [filterResults, stateResults]);
+  const filteredAddressResults = useMemo(() => filterResults(addressResults, 'address'), [filterResults, addressResults]);
+  const filteredGeocodeResults = useMemo(() => {
+    return geocodeResults.filter(item => !removedItems.has(`geocode-${item.id}`));
+  }, [geocodeResults, removedItems]);
+
+  // Get current filtered and sorted data
+  const getCurrentData = useCallback((activeTab) => {
+    let data = [];
+    switch (activeTab) {
+      case 'zips':
+        data = filteredZipResults;
+        break;
+      case 'cities':
+        data = filteredCityResults;
+        break;
+      case 'counties':
+        data = filteredCountyResults;
+        break;
+      case 'states':
+        data = filteredStateResults;
+        break;
+      case 'streets':
+        data = filteredAddressResults;
+        break;
+      case 'geocode':
+        data = filteredGeocodeResults;
+        break;
+      default:
+        data = [];
+    }
+
+    // Apply sorting
+    if (sortConfig.key) {
+      data = [...data].sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+
+        if (Array.isArray(aVal) && Array.isArray(bVal)) {
+          const aMin = aVal.length > 0 ? Math.min(...aVal) : Number.POSITIVE_INFINITY;
+          const bMin = bVal.length > 0 ? Math.min(...bVal) : Number.POSITIVE_INFINITY;
+          return sortConfig.direction === 'asc'
+            ? aMin - bMin
+            : bMin - aMin;
+        }
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        }
+
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal;
+      });
+    }
+
+    return data;
+  }, [filteredZipResults, filteredCityResults, filteredCountyResults, filteredStateResults, filteredAddressResults, filteredGeocodeResults, sortConfig]);
+
+  // Result selection handlers with zoom logic
+  const handleResultSelect = useCallback(async (type, result) => {
+    // Check if this item is already selected
+    const isAlreadySelected = selectedResult?.type === type && selectedResult?.id === result.id;
+
+    if (isAlreadySelected) {
+      // Deselect the item
+      setSelectedResult(null);
+
+      // Reset view to show all results from active search
+      if (mapInteractionCallback) {
+        // Get all visible results based on the active search
+        let allResults = [];
+
+        // Collect all filtered results based on type
+        switch (type) {
+          case 'zip':
+            allResults = filteredZipResults || [];
+            break;
+          case 'city':
+            allResults = filteredCityResults || [];
+            break;
+          case 'county':
+            allResults = filteredCountyResults || [];
+            break;
+          case 'state':
+            allResults = filteredStateResults || [];
+            break;
+        }
+
+        // Calculate bounds for all results
+        if (allResults.length > 0) {
+          const bounds = {
+            minLat: Infinity,
+            maxLat: -Infinity,
+            minLng: Infinity,
+            maxLng: -Infinity
+          };
+
+          allResults.forEach(item => {
+            const lat = parseFloat(item.lat || item.latitude);
+            const lng = parseFloat(item.lng || item.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              bounds.minLat = Math.min(bounds.minLat, lat);
+              bounds.maxLat = Math.max(bounds.maxLat, lat);
+              bounds.minLng = Math.min(bounds.minLng, lng);
+              bounds.maxLng = Math.max(bounds.maxLng, lng);
+            }
+          });
+
+          // Validate bounds before calling map interaction
+          if (isFinite(bounds.minLat) && isFinite(bounds.maxLat) &&
+              isFinite(bounds.minLng) && isFinite(bounds.maxLng)) {
+            // Call map interaction to fit bounds
+            await mapInteractionCallback({
+              type: 'fitBounds',
+              bounds: [[bounds.minLat, bounds.minLng], [bounds.maxLat, bounds.maxLng]],
+              padding: 50
+            });
+          } else {
+            console.warn('Invalid bounds calculated, skipping fitBounds', bounds);
+          }
+        }
+      }
+
+      // Close any open popups
+      if (type === 'zip' && markersRef.current[`zip-${result.id}`]) {
+        const marker = markersRef.current[`zip-${result.id}`];
+        if (marker && marker.closePopup) {
+          marker.closePopup();
+        }
+      }
+
+      return; // Exit early since we're deselecting
+    }
+
+    // Otherwise, select the new item
+    setSelectedResult({ type, id: result.id });
+
+    // Ensure we have valid coordinates
+    const lat = parseFloat(result.lat || result.latitude);
+    const lng = parseFloat(result.lng || result.longitude);
+
+    if (isNaN(lat) || isNaN(lng)) {
+      console.warn('Invalid coordinates for result:', result);
+      return;
+    }
+
+    const newCenter = [lat, lng];
+
+    // If we have a map interaction callback, use it to control the map
+    if (mapInteractionCallback) {
+      // Different zoom levels based on type (matching old GeoApplication.jsx logic)
+      let zoomLevel;
+      switch (type) {
+        case 'zip':
+          zoomLevel = 13; // Close zoom for ZIP codes
+          break;
+        case 'city':
+          zoomLevel = 12; // Medium-close for cities
+          break;
+        case 'county':
+          zoomLevel = 9; // Wider zoom for counties
+          break;
+        case 'state':
+          zoomLevel = 7; // Wide zoom for states
+          break;
+        default:
+          zoomLevel = 10;
+      }
+
+      // Call the map interaction callback with type-specific logic
+      await mapInteractionCallback({
+        type,
+        result,
+        center: newCenter,
+        zoom: zoomLevel
+      });
+
+      // For ZIP markers, open the popup after a delay
+      if (type === 'zip' && markersRef.current[`zip-${result.id}`]) {
+        setTimeout(() => {
+          const marker = markersRef.current[`zip-${result.id}`];
+          if (marker) {
+            marker.openPopup();
+          }
+        }, 500); // Delay to allow map animation to complete
+      }
+    }
+  }, [mapInteractionCallback, selectedResult, filteredZipResults, filteredCityResults, filteredCountyResults, filteredStateResults]);
+
+  const handleResultDoubleClick = useCallback((type, result) => {
+    if (selectedResult && selectedResult.type === type && selectedResult.id === result.id) {
+      setSelectedResult(null); // Unselect
+    }
+  }, [selectedResult]);
+
+  const isResultSelected = useCallback((type, resultId) => {
+    return selectedResult && selectedResult.type === type && selectedResult.id === resultId;
+  }, [selectedResult]);
+
+  // Get total excluded count
+  const getTotalExcludedCount = useCallback(() => {
+    return excludedGeos.zips.length + excludedGeos.cities.length +
+           excludedGeos.counties.length + excludedGeos.states.length;
+  }, [excludedGeos]);
+
 
   const value = {
     // Results
@@ -245,6 +500,12 @@ export const ResultsProvider = ({ children }) => {
     setCountyResults,
     stateResults,
     setStateResults,
+    addressResults,
+    setAddressResults,
+    geocodeResults,
+    setGeocodeResults,
+    notFoundAddresses,
+    setNotFoundAddresses,
 
     // Pagination
     currentPage,
@@ -264,12 +525,38 @@ export const ResultsProvider = ({ children }) => {
     selectedResult,
     setSelectedResult,
 
+    // Map interaction
+    mapInteractionCallback,
+    setMapInteractionCallback,
+    markersRef,
+
     // Functions
     getRemovalKey,
     removeItem,
     restoreItem,
     filterResults,
-    clearResults
+    clearResults,
+    handleSort,
+    getCurrentData,
+    handleResultSelect,
+    handleResultDoubleClick,
+    isResultSelected,
+    getTotalExcludedCount,
+    removeGeocodeResult,
+    moveToNotFound,
+    restoreFromNotFound,
+
+    // Filtered results
+    filteredZipResults,
+    filteredCityResults,
+    filteredCountyResults,
+    filteredStateResults,
+    filteredAddressResults,
+    filteredGeocodeResults,
+
+    // Sort config
+    sortConfig,
+    setSortConfig
   };
 
   return <ResultsContext.Provider value={value}>{children}</ResultsContext.Provider>;

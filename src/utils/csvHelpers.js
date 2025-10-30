@@ -71,33 +71,65 @@ export const parseCSVLine = (line, delimiter = ',') => {
  * Detect column types from sample data
  * @param {Array} data - Sample data rows
  * @param {Array} headers - Column headers
+ * @param {boolean} isGeocodeMode - Whether detecting for geocoding (vs location search)
  * @returns {Object} - Mapping of headers to detected types
  */
-export const detectColumnTypes = (data, headers) => {
+export const detectColumnTypes = (data, headers, isGeocodeMode = false) => {
   const mapping = {};
 
   headers.forEach(header => {
     const lowerHeader = header.toLowerCase();
 
-    // Check header names for type hints
-    if (lowerHeader.includes('zip') || lowerHeader.includes('postal')) {
-      mapping[header] = 'zipcode';
-    } else if (lowerHeader.includes('city') || lowerHeader.includes('town')) {
-      mapping[header] = 'city';
-    } else if (lowerHeader.includes('county')) {
-      mapping[header] = 'county';
-    } else if (lowerHeader.includes('state') || lowerHeader.includes('province')) {
-      mapping[header] = 'state';
-    } else {
-      // Try to detect from data
-      const sampleValues = data.slice(0, 5).map(row => row[header]).filter(Boolean);
+    if (isGeocodeMode) {
+      // Geocode mode: Detect address-related fields
+      if (lowerHeader.includes('business') || lowerHeader.includes('name') || lowerHeader.includes('company')) {
+        mapping[header] = 'businessName';
+      } else if (lowerHeader.includes('address') && !lowerHeader.includes('street')) {
+        // Full address field (not specifically street)
+        mapping[header] = 'fullAddress';
+      } else if (lowerHeader.includes('street') || lowerHeader.includes('address')) {
+        mapping[header] = 'street';
+      } else if (lowerHeader.includes('city') || lowerHeader.includes('town')) {
+        mapping[header] = 'city';
+      } else if (lowerHeader.includes('state') || lowerHeader.includes('province')) {
+        mapping[header] = 'state';
+      } else if (lowerHeader.includes('zip') || lowerHeader.includes('postal')) {
+        mapping[header] = 'zip';
+      } else if (lowerHeader.includes('county')) {
+        mapping[header] = 'county';
+      } else {
+        // Try to detect from data
+        const sampleValues = data.slice(0, 5).map(row => row[header]).filter(Boolean);
 
-      if (sampleValues.some(val => /^\d{5}(-\d{4})?$/.test(val))) {
+        if (sampleValues.some(val => /^\d{5}(-\d{4})?$/.test(val))) {
+          mapping[header] = 'zip';
+        } else if (sampleValues.some(val => /^[A-Z]{2}$/.test(val))) {
+          mapping[header] = 'state';
+        } else {
+          mapping[header] = 'ignore';
+        }
+      }
+    } else {
+      // Location search mode: Original detection logic
+      if (lowerHeader.includes('zip') || lowerHeader.includes('postal')) {
         mapping[header] = 'zipcode';
-      } else if (sampleValues.some(val => /^[A-Z]{2}$/.test(val))) {
+      } else if (lowerHeader.includes('city') || lowerHeader.includes('town')) {
+        mapping[header] = 'city';
+      } else if (lowerHeader.includes('county')) {
+        mapping[header] = 'county';
+      } else if (lowerHeader.includes('state') || lowerHeader.includes('province')) {
         mapping[header] = 'state';
       } else {
-        mapping[header] = 'ignore';
+        // Try to detect from data
+        const sampleValues = data.slice(0, 5).map(row => row[header]).filter(Boolean);
+
+        if (sampleValues.some(val => /^\d{5}(-\d{4})?$/.test(val))) {
+          mapping[header] = 'zipcode';
+        } else if (sampleValues.some(val => /^[A-Z]{2}$/.test(val))) {
+          mapping[header] = 'state';
+        } else {
+          mapping[header] = 'ignore';
+        }
       }
     }
   });

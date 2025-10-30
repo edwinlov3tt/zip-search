@@ -1,7 +1,7 @@
 import React from 'react';
-import { ChevronUp, Maximize2, Minus, Search, Copy, FileDown, Download, Check } from 'lucide-react';
+import { ChevronUp, ChevronDown, Maximize2, Minimize2, Search, Copy, FileDown, Download, Check } from 'lucide-react';
 import DrawerTabs from './DrawerTabs';
-import BoundaryControls from './BoundaryControls';
+import BoundarySettings from './BoundarySettings';
 import { useUI } from '../../contexts/UIContext';
 import { useMap } from '../../contexts/MapContext';
 
@@ -12,6 +12,8 @@ const DrawerHeader = ({
   exportSimpleCsv,
   getCurrentData,
   getTotalExcludedCount,
+  filteredAddressResults,
+  filteredGeocodeResults,
   filteredZipResults,
   filteredCityResults,
   filteredCountyResults,
@@ -27,13 +29,20 @@ const DrawerHeader = ({
     drawerSearchTerm,
     setDrawerSearchTerm,
     copySuccess,
-    setShowCustomExport
+    setShowCustomExport,
+    setDrawerState
   } = useUI();
+
+  // Determine if buttons should be disabled based on active tab
+  const isSearchHistoryTab = activeTab === 'searches';
+  const isExcludedTab = activeTab === 'excluded';
+  const shouldDisableCopyAndSimpleExport = isSearchHistoryTab || isExcludedTab;
+  const shouldDisableCustomExport = isExcludedTab;
 
   return (
     <div
       className={`flex items-center justify-between px-4 py-2 border-b ${isDarkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'} ${
-        drawerState === 'half' ? isDarkMode ? 'cursor-ns-resize hover:bg-gray-600' : 'cursor-ns-resize hover:bg-gray-100' : ''
+        isDarkMode ? 'cursor-ns-resize hover:bg-gray-600' : 'cursor-ns-resize hover:bg-gray-100'
       }`}
       onMouseDown={handleMouseDown}
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
@@ -41,19 +50,60 @@ const DrawerHeader = ({
       <div className="flex items-center space-x-4">
         {/* Drawer State Controls */}
         <div className="flex items-center space-x-1">
-          <button
-            onClick={cycleDrawerState}
-            className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-            title={drawerState === 'collapsed' ? 'Expand to Half' : drawerState === 'half' ? 'Expand to Full' : 'Collapse'}
-          >
-            {drawerState === 'collapsed' ? (
+          {/* Left button - varies by state */}
+          {drawerState === 'collapsed' ? (
+            <button
+              onClick={() => setDrawerState('half')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Expand to Half"
+            >
               <ChevronUp className="h-4 w-4" />
-            ) : drawerState === 'half' ? (
+            </button>
+          ) : drawerState === 'half' ? (
+            <button
+              onClick={() => setDrawerState('collapsed')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Minimize"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => setDrawerState('half')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Half View"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* Right button - varies by state */}
+          {drawerState === 'collapsed' ? (
+            <button
+              onClick={() => setDrawerState('full')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Expand to Full"
+            >
               <Maximize2 className="h-4 w-4" />
-            ) : (
-              <Minus className="h-4 w-4" />
-            )}
-          </button>
+            </button>
+          ) : drawerState === 'half' ? (
+            <button
+              onClick={() => setDrawerState('full')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Expand to Full"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => setDrawerState('collapsed')}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              title="Minimize to Bottom"
+            >
+              <Minimize2 className="h-4 w-4" />
+            </button>
+          )}
+
           <div className={`text-xs px-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             {drawerState === 'full' ? 'Full' : drawerState === 'half' ? `Half (${Math.round(drawerHeight)}%)` : 'Min'}
           </div>
@@ -61,6 +111,8 @@ const DrawerHeader = ({
 
         {/* Tabs */}
         <DrawerTabs
+          filteredAddressResults={filteredAddressResults}
+          filteredGeocodeResults={filteredGeocodeResults}
           filteredZipResults={filteredZipResults}
           filteredCityResults={filteredCityResults}
           filteredCountyResults={filteredCountyResults}
@@ -75,7 +127,12 @@ const DrawerHeader = ({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            <Search className={`absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 z-50 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+            <Search
+              className={`absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-500'
+              }`}
+              style={{ zIndex: 10000 }}
+            />
             <input
               type="text"
               placeholder="Search"
@@ -97,20 +154,25 @@ const DrawerHeader = ({
       </div>
 
       {/* Actions and Boundary Controls */}
-      <div className="flex items-center space-x-4">
-        <BoundaryControls />
+      <div className="flex items-center space-x-2">
+        <BoundarySettings />
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => copyToClipboard(getCurrentData())}
+            onClick={() => !shouldDisableCopyAndSimpleExport && copyToClipboard(getCurrentData(activeTab))}
+            disabled={shouldDisableCopyAndSimpleExport}
             className={`p-1 rounded transition-all duration-200 ${
-              copySuccess
-                ? 'bg-green-100 text-green-600'
-                : isDarkMode
-                  ? 'hover:bg-gray-600'
-                  : 'hover:bg-gray-200'
+              shouldDisableCopyAndSimpleExport
+                ? isDarkMode
+                  ? 'opacity-30 cursor-not-allowed text-gray-500'
+                  : 'opacity-30 cursor-not-allowed text-gray-400'
+                : copySuccess
+                  ? 'bg-green-100 text-green-600'
+                  : isDarkMode
+                    ? 'hover:bg-gray-600'
+                    : 'hover:bg-gray-200'
             }`}
-            title={copySuccess ? "Copied!" : "Copy to clipboard"}
+            title={shouldDisableCopyAndSimpleExport ? "Not available on this tab" : copySuccess ? "Copied!" : "Copy to clipboard"}
           >
             {copySuccess ? (
               <Check className="h-4 w-4 animate-pulse" />
@@ -120,17 +182,35 @@ const DrawerHeader = ({
           </button>
 
           <button
-            onClick={() => exportSimpleCsv(getCurrentData())}
-            className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-            title={`Export ${activeTab} (minimal)`}
+            onClick={() => !shouldDisableCopyAndSimpleExport && exportSimpleCsv(getCurrentData(activeTab))}
+            disabled={shouldDisableCopyAndSimpleExport}
+            className={`p-1 rounded transition-colors ${
+              shouldDisableCopyAndSimpleExport
+                ? isDarkMode
+                  ? 'opacity-30 cursor-not-allowed text-gray-500'
+                  : 'opacity-30 cursor-not-allowed text-gray-400'
+                : isDarkMode
+                  ? 'hover:bg-gray-600'
+                  : 'hover:bg-gray-200'
+            }`}
+            title={shouldDisableCopyAndSimpleExport ? "Not available on this tab" : `Export ${activeTab} (minimal)`}
           >
             <FileDown className="h-4 w-4" />
           </button>
 
           <button
-            onClick={() => setShowCustomExport(true)}
-            className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
-            title="Custom export options"
+            onClick={() => !shouldDisableCustomExport && setShowCustomExport(true)}
+            disabled={shouldDisableCustomExport}
+            className={`p-1 rounded transition-colors ${
+              shouldDisableCustomExport
+                ? isDarkMode
+                  ? 'opacity-30 cursor-not-allowed text-gray-500'
+                  : 'opacity-30 cursor-not-allowed text-gray-400'
+                : isDarkMode
+                  ? 'hover:bg-gray-600'
+                  : 'hover:bg-gray-200'
+            }`}
+            title={shouldDisableCustomExport ? "Not available on Excluded tab" : "Custom export options"}
           >
             <Download className="h-4 w-4" />
           </button>

@@ -4,8 +4,10 @@ const SearchModeToggle = ({ searchMode, handleSearchModeChange, isDarkMode }) =>
   const modes = [
     { id: 'radius', label: 'Radius Search', shortLabel: 'Radius' },
     { id: 'polygon', label: 'Polygon Search', shortLabel: 'Polygon' },
+    { id: 'address', label: 'Address Search', shortLabel: 'Address' },
     { id: 'hierarchy', label: 'Hierarchy Search', shortLabel: 'Hierarchy' },
-    { id: 'upload', label: 'Upload Search', shortLabel: 'Upload' }
+    { id: 'upload', label: 'Upload Search', shortLabel: 'Upload' },
+    { id: 'geocode', label: 'Geocode', shortLabel: 'Geocode' }
   ];
 
   return (

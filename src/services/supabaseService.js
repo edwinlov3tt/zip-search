@@ -60,61 +60,8 @@ class SupabaseService {
         };
       }
 
-      // Prefer RPC for precise server-side spatial filtering when possible
-      if (lat != null && lng != null && radius != null) {
-        try {
-          const { data, error } = await supabase.rpc('zips_within_radius', {
-            lat: Number(lat),
-            lng: Number(lng),
-            radius_miles: Number(radius),
-            lim: limit,
-            off: offset,
-          });
-          if (!error && Array.isArray(data)) {
-            const results = (data || []).map(row => ({
-              zipcode: row.zipcode,
-              city: row.city,
-              state: row.state_code,
-              stateCode: row.state_code,
-              county: row.county,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              lat: row.latitude,
-              lng: row.longitude
-            }));
-            console.info('[Supabase] rpc zips_within_radius', { rows: results.length });
-            return { results, total: results.length, offset, limit, hasMore: false };
-          }
-        } catch (e) {
-          console.warn('[Supabase] rpc zips_within_radius failed; falling back.', e);
-        }
-      } else if (polygon && Array.isArray(polygon) && polygon.length >= 3) {
-        try {
-          const polygonGeoJson = this._polygonToGeoJSON(polygon);
-          const { data, error } = await supabase.rpc('zips_within_polygon', {
-            polygon_geojson: polygonGeoJson,
-            lim: limit,
-            off: offset,
-          });
-          if (!error && Array.isArray(data)) {
-            const results = (data || []).map(row => ({
-              zipcode: row.zipcode,
-              city: row.city,
-              state: row.state_code,
-              stateCode: row.state_code,
-              county: row.county,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              lat: row.latitude,
-              lng: row.longitude
-            }));
-            console.info('[Supabase] rpc zips_within_polygon', { rows: results.length });
-            return { results, total: results.length, offset, limit, hasMore: false };
-          }
-        } catch (e) {
-          console.warn('[Supabase] rpc zips_within_polygon failed; falling back.', e);
-        }
-      }
+      // Skip RPC functions for now as they don't exist in the database
+      // Will use client-side filtering below instead
 
       let queryBuilder = supabase
         .from('zipcodes')

@@ -16,6 +16,8 @@ const ResultsDrawer = ({
   copyToClipboard,
   exportSimpleCsv,
   getTotalExcludedCount,
+  filteredAddressResults,
+  filteredGeocodeResults,
   filteredZipResults,
   filteredCityResults,
   filteredCountyResults,
@@ -34,6 +36,8 @@ const ResultsDrawer = ({
 
   // Don't show drawer if no search performed or no results
   if (!searchPerformed || (
+    filteredAddressResults.length === 0 &&
+    filteredGeocodeResults.length === 0 &&
     filteredZipResults.length === 0 &&
     filteredCityResults.length === 0 &&
     filteredCountyResults.length === 0 &&
@@ -58,6 +62,8 @@ const ResultsDrawer = ({
         exportSimpleCsv={exportSimpleCsv}
         getCurrentData={getCurrentData}
         getTotalExcludedCount={getTotalExcludedCount}
+        filteredAddressResults={filteredAddressResults}
+        filteredGeocodeResults={filteredGeocodeResults}
         filteredZipResults={filteredZipResults}
         filteredCityResults={filteredCityResults}
         filteredCountyResults={filteredCountyResults}

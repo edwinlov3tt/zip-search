@@ -15,6 +15,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        '/geocoder': {
+          target: 'https://ignite.edwinlovett.com',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/geocoder/, '/geocoder'),
+        },
       },
     },
   }

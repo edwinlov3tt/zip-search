@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 
-const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoading, error, isDarkMode }) => {
+const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoading, error, isDarkMode, isGeocodeMode = false }) => {
   const fileInputRef = useRef(null);
 
   const handleFileSelect = (event) => {
@@ -34,7 +34,7 @@ const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoadin
   };
 
   return (
-    <div className={`px-2 pt-1 pb-3 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}>
+    <div className={`px-2 pt-1 pb-2 ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}>
       {/* Upload Area - Full Width */}
       <div className="w-full">
         <h3 className="text-base font-medium mb-2 flex items-center">
@@ -44,7 +44,7 @@ const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoadin
 
         {uploadedFile ? (
           // Show uploaded file with remove button
-          <div className={`border-2 rounded-lg p-3 ${isDarkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300 bg-gray-50'}`}>
+          <div className={`border-2 rounded-lg p-2 ${isDarkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300 bg-gray-50'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <Upload className={`w-4 h-4 mr-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
@@ -67,7 +67,7 @@ const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoadin
         ) : (
           // Show upload area
           <div
-            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${
               isDarkMode
                 ? 'border-gray-600 hover:border-red-400 hover:bg-gray-700'
                 : 'border-gray-300 hover:border-red-500 hover:bg-red-50'
@@ -114,7 +114,18 @@ const CSVUploadInterface = ({ onFileUpload, onRemoveFile, uploadedFile, isLoadin
       <div className={`w-full border-t mt-3 pt-3 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
         {/* Notes/Tips - Below Upload */}
         <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          <span className="font-medium text-red-600">Supported:</span> ZIP Codes (12345, 12345-6789), Cities ("New York, NY"), Counties ("Cook County, IL") - Headers auto-detected
+          {isGeocodeMode ? (
+            <>
+              <span className="font-medium text-red-600">Supported:</span> Business Name, Full Address, or Address Components (Street, City, State, Zip, County) - Headers auto-detected
+              <div className="mt-1">
+                <span className="font-medium text-red-600">Best results:</span> CSVs with Business, Street, City, State, Zip columns
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-red-600">Supported:</span> ZIP Codes (12345, 12345-6789), Cities ("New York, NY"), Counties ("Cook County, IL") - Headers auto-detected
+            </>
+          )}
         </div>
       </div>
     </div>

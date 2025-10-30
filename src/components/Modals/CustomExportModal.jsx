@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useSearch } from '../../contexts/SearchContext';
+import { useMap } from '../../contexts/MapContext';
 
-const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => {
+const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode, allData }) => {
   const [preset, setPreset] = useState('minimal');
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [includeHeader, setIncludeHeader] = useState(true);
@@ -9,32 +11,189 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
   const [sortBy, setSortBy] = useState('');
   const [deduplicate, setDeduplicate] = useState(true);
   const [filename, setFilename] = useState('');
-  const [alsoExportAll, setAlsoExportAll] = useState(false);
+  const [selectedSearches, setSelectedSearches] = useState('all');
 
-  // Define all available columns for each tab
-  const schemaByTab = {
-    zips: ['zipCode', 'city', 'county', 'state', 'lat', 'lng', 'area', 'overlap'],
-    cities: ['name', 'state', 'county', 'lat', 'lng'],
-    counties: ['name', 'state', 'lat', 'lng'],
-    states: ['name', 'state', 'lat', 'lng']
+  // Import hooks to access search history and settings
+  const { radiusSearches, activeRadiusSearchId } = useSearch() || {};
+  const { showCombinedResults } = useMap() || {};
+
+  // All available columns for export - varies by tab type
+  const allAvailableColumns = activeTab === 'streets'
+    ? ['fullAddress', 'housenumber', 'street', 'unit', 'city', 'state', 'postcode', 'lat', 'lng', 'searchName']
+    : ['zipCode', 'city', 'county', 'state', 'lat', 'lng', 'area', 'overlap', 'searchName'];
+
+  // Column headers mapping for CSV export
+  const columnHeaderMap = {
+    zipCode: 'zipcode',
+    city: 'city',
+    county: 'county',
+    state: 'state',
+    lat: 'latitude',
+    lng: 'longitude',
+    area: 'area',
+    overlap: 'overlap',
+    searchName: 'Search Name',
+    fullAddress: 'Full Address',
+    housenumber: 'House Number',
+    street: 'Street',
+    unit: 'Unit',
+    postcode: 'ZIP'
+  };
+
+  // Initialize selected searches based on combined results setting
+  useEffect(() => {
+    if (showCombinedResults) {
+      setSelectedSearches('all');
+    } else if (activeRadiusSearchId) {
+      setSelectedSearches(activeRadiusSearchId);
+    }
+  }, [showCombinedResults, activeRadiusSearchId]);
+
+  // Get the combined data to export - merge all data types
+  const getExportData = () => {
+    // If we have allData, combine all results into a unified dataset
+    if (allData) {
+      const combined = [];
+
+      // Handle streets (addresses) differently from zips
+      if (activeTab === 'streets') {
+        let dataToExport = allData.addresses || data || [];
+
+        // Filter by selected searches if applicable
+        if (selectedSearches !== 'all' && dataToExport.length > 0) {
+          dataToExport = dataToExport.filter(item => {
+            if (item.searchIds && item.searchIds.includes(selectedSearches)) {
+              return true;
+            }
+            return false;
+          });
+        }
+
+        // Add address data with computed fullAddress field
+        dataToExport.forEach(item => {
+          // Build full address string
+          const addressParts = [];
+          if (item.housenumber) addressParts.push(item.housenumber);
+          if (item.street) addressParts.push(item.street);
+          if (item.unit) addressParts.push(`Unit ${item.unit}`);
+
+          const streetAddress = addressParts.join(' ');
+          const cityStateZip = [
+            item.city || '',
+            item.state || '',
+            item.postcode || ''
+          ].filter(Boolean).join(' ');
+
+          const fullAddress = `${streetAddress}, ${cityStateZip}`;
+
+          // Find the search name
+          let searchName = '';
+          if (item.searchIds && item.searchIds.length > 0) {
+            const search = radiusSearches?.find(s => s.id === item.searchIds[0]);
+            if (search) {
+              searchName = search.display || search.location || `Search ${search.sequence}`;
+            }
+          }
+
+          combined.push({
+            fullAddress,
+            housenumber: item.housenumber || '',
+            street: item.street || '',
+            unit: item.unit || '',
+            city: item.city || '',
+            state: item.state || '',
+            postcode: item.postcode || '',
+            lat: item.lat || '',
+            lng: item.lng || '',
+            searchName
+          });
+        });
+      } else {
+        // Handle ZIP data
+        let dataToExport = allData.zips || [];
+
+        // If we have search metadata and specific searches selected
+        if (selectedSearches !== 'all' && dataToExport.length > 0) {
+          dataToExport = dataToExport.filter(item => {
+            // Check if item belongs to selected search
+            if (item.searchIds && item.searchIds.includes(selectedSearches)) {
+              return true;
+            }
+            // If no searchIds, include it only if 'all' is selected
+            return false;
+          });
+        }
+
+        // Add ZIP data with all fields
+        dataToExport.forEach(item => {
+          // Find the search name for this item
+          let searchName = '';
+          if (item.searchIds && item.searchIds.length > 0 && radiusSearches) {
+            const search = radiusSearches.find(s => s.id === item.searchIds[0]);
+            if (search) {
+              searchName = search.display || search.location || `Search ${search.sequence}`;
+            }
+          }
+
+          combined.push({
+            zipCode: item.zipCode,
+            city: item.city,
+            county: item.county,
+            state: item.state,
+            lat: item.lat,
+            lng: item.lng,
+            area: item.area || '',
+            overlap: item.overlap || '',
+            searchName: searchName
+          });
+        });
+      }
+
+      return combined;
+    }
+    // Fallback to current data if allData not available
+    // For streets, compute fullAddress for the data if not present
+    if (activeTab === 'streets' && data) {
+      return data.map(item => {
+        // Build full address if not already present
+        if (!item.fullAddress) {
+          const addressParts = [];
+          if (item.housenumber) addressParts.push(item.housenumber);
+          if (item.street) addressParts.push(item.street);
+          if (item.unit) addressParts.push(`Unit ${item.unit}`);
+
+          const streetAddress = addressParts.join(' ');
+          const cityStateZip = [
+            item.city || '',
+            item.state || '',
+            item.postcode || ''
+          ].filter(Boolean).join(' ');
+
+          item.fullAddress = `${streetAddress}, ${cityStateZip}`;
+        }
+        return item;
+      });
+    }
+    return data;
   };
 
   const minimalColumns = {
     zips: ['zipCode'],
-    cities: ['name', 'state'],
-    counties: ['name', 'state'],
-    states: ['name', 'state']
+    cities: ['city', 'state'],
+    counties: ['county', 'state'],
+    states: ['state'],
+    streets: ['fullAddress']
   };
 
   const presets = {
     minimal: { name: 'Minimal (recommended)', description: 'Essential fields only' },
     all: { name: 'All fields', description: 'Include all available data' },
-    meta: { name: 'Meta Ads', description: 'ZIP codes only, no header' },
-    google: { name: 'Google Ads', description: 'City + State format' },
+    meta: { name: 'Meta Ads', description: 'City + State, no header' },
+    google: { name: 'Google Ads', description: 'ZIP, City, State format' },
     last: { name: 'Last used', description: 'Your previous selection' }
   };
 
-  // Initialize columns based on preset
+  // Initialize columns based on preset and activeTab
   useEffect(() => {
     let cols = [];
     switch (preset) {
@@ -43,15 +202,17 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
         setIncludeHeader(true);
         break;
       case 'all':
-        cols = schemaByTab[activeTab] || [];
+        cols = allAvailableColumns;
         setIncludeHeader(true);
         break;
       case 'meta':
-        cols = activeTab === 'zips' ? ['zipCode'] : minimalColumns[activeTab];
+        // Meta Ads preset: City + State, no header
+        cols = ['city', 'state'];
         setIncludeHeader(false);
         break;
       case 'google':
-        cols = activeTab === 'cities' ? ['name', 'state'] : minimalColumns[activeTab];
+        // Google Ads preset: ZIP, City, State format
+        cols = ['zipCode', 'city', 'state'];
         setIncludeHeader(true);
         break;
       case 'last':
@@ -69,9 +230,10 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
   useEffect(() => {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-    const count = data.length;
+    const exportData = getExportData();
+    const count = exportData.length;
     setFilename(`${activeTab}_${count}rows_${timestamp}.csv`);
-  }, [activeTab, data]);
+  }, [activeTab, data, allData]);
 
   const handleColumnToggle = (column) => {
     setSelectedColumns(prev =>
@@ -82,7 +244,7 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
   };
 
   const handleSelectAll = () => {
-    setSelectedColumns(schemaByTab[activeTab] || []);
+    setSelectedColumns(allAvailableColumns);
   };
 
   const handleSelectNone = () => {
@@ -92,26 +254,17 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
   const processData = (data, sortField, dedupe) => {
     let processed = [...data];
 
-    // Deduplicate
+    // Deduplicate based on appropriate field for the tab type
     if (dedupe) {
       const seen = new Set();
       processed = processed.filter(item => {
         let key;
-        switch (activeTab) {
-          case 'zips':
-            key = item.zipCode;
-            break;
-          case 'cities':
-            key = `${item.name}|${item.state}`;
-            break;
-          case 'counties':
-            key = `${item.name}|${item.state}`;
-            break;
-          case 'states':
-            key = item.state;
-            break;
-          default:
-            key = item.id;
+        if (activeTab === 'streets') {
+          // For addresses, create composite key from all address fields
+          key = `${item.housenumber || ''}|${item.street || ''}|${item.unit || ''}|${item.city || ''}|${item.state || ''}|${item.postcode || ''}`;
+        } else {
+          // For other tabs, use zipCode
+          key = item.zipCode;
         }
         if (seen.has(key)) return false;
         seen.add(key);
@@ -135,19 +288,14 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
     const lines = [];
 
     if (includeHeader) {
-      lines.push(columns.join(delimiter));
+      // Use mapped headers for CSV export
+      const headers = columns.map(col => columnHeaderMap[col] || col);
+      lines.push(headers.join(delimiter));
     }
 
     for (const item of data) {
       const row = columns.map(col => {
         let value = item[col] || '';
-        // Special formatting for some columns
-        if (col === 'name' && activeTab === 'counties' && !value.toLowerCase().includes('county')) {
-          value = `${value} County`;
-        }
-        if (col === 'state' && (activeTab === 'cities' || activeTab === 'counties') && columns.includes('name')) {
-          return value; // Just state code for name,state combinations
-        }
         // Quote values that contain delimiter or quotes
         if (String(value).includes(delimiter) || String(value).includes('"')) {
           value = `"${String(value).replace(/"/g, '""')}"`;
@@ -161,7 +309,8 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
   };
 
   const handleDownload = () => {
-    const processed = processData(data, sortBy, deduplicate);
+    const exportData = getExportData();
+    const processed = processData(exportData, sortBy, deduplicate);
     const csv = generateCSV(processed, selectedColumns, includeHeader, delimiter);
 
     // Save user preferences
@@ -181,25 +330,15 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
     a.click();
     URL.revokeObjectURL(url);
 
-    // Download all fields file if requested
-    if (alsoExportAll) {
-      const allColumns = schemaByTab[activeTab] || [];
-      const allCsv = generateCSV(processed, allColumns, includeHeader, delimiter);
-      const allBlob = new Blob([allCsv], { type: 'text/csv' });
-      const allUrl = URL.createObjectURL(allBlob);
-      const allA = document.createElement('a');
-      allA.href = allUrl;
-      allA.download = filename.replace('.csv', '_all.csv');
-      allA.click();
-      URL.revokeObjectURL(allUrl);
-    }
+    // Removed alsoExportAll functionality - now handled by data source selection
 
     onClose();
   };
 
   if (!isOpen) return null;
 
-  const processed = processData(data, sortBy, deduplicate);
+  const exportData = getExportData();
+  const processed = processData(exportData, sortBy, deduplicate);
   const previewData = processed.slice(0, 10);
 
   return (
@@ -217,12 +356,35 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
             </button>
           </div>
           <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            Selection: {activeTab} · {data.length} rows
+            Current tab: {activeTab} · {getExportData().length} rows available
           </p>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Search Selection - Only show if multiple searches exist */}
+          {radiusSearches && radiusSearches.length > 1 && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Searches to Include</label>
+              <select
+                value={selectedSearches}
+                onChange={(e) => setSelectedSearches(e.target.value)}
+                className={`w-full p-2 border rounded ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300'
+                }`}
+              >
+                <option value="all">Combine All Searches</option>
+                {radiusSearches.map(search => (
+                  <option key={search.id} value={search.id}>
+                    {search.display || search.location || `Search ${search.sequence}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Presets */}
           <div>
             <label className="block text-sm font-medium mb-2">Export Preset</label>
@@ -261,7 +423,7 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {(schemaByTab[activeTab] || []).map(column => (
+              {allAvailableColumns.map(column => (
                 <label key={column} className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -348,15 +510,6 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
                   : 'bg-white border-gray-300'
               }`}
             />
-            <label className="flex items-center space-x-2 mt-2">
-              <input
-                type="checkbox"
-                checked={alsoExportAll}
-                onChange={(e) => setAlsoExportAll(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm">Also download full dataset</span>
-            </label>
           </div>
 
           {/* Preview */}
@@ -408,7 +561,7 @@ const CustomExportModal = ({ isOpen, onClose, data, activeTab, isDarkMode }) => 
             disabled={selectedColumns.length === 0}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Download {alsoExportAll ? '(2 files)' : ''}
+            Download
           </button>
         </div>
       </div>

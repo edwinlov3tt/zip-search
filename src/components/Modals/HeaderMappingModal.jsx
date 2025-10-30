@@ -10,7 +10,8 @@ const HeaderMappingModal = ({
   setColumnMapping,
   onConfirm,
   isDarkMode,
-  processingProgress
+  processingProgress,
+  isGeocodeMode = false
 }) => {
 
   if (!isOpen) return null;
@@ -70,10 +71,24 @@ const HeaderMappingModal = ({
                 }`}
               >
                 <option value="ignore">Do Not Include</option>
-                <option value="zipcode">ZIP Code</option>
-                <option value="city">City</option>
-                <option value="state">State</option>
-                <option value="county">County</option>
+                {isGeocodeMode ? (
+                  <>
+                    <option value="businessName">Business Name</option>
+                    <option value="fullAddress">Full Address</option>
+                    <option value="street">Street Address</option>
+                    <option value="city">City</option>
+                    <option value="state">State</option>
+                    <option value="zip">ZIP Code</option>
+                    <option value="county">County</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="zipcode">ZIP Code</option>
+                    <option value="city">City</option>
+                    <option value="state">State</option>
+                    <option value="county">County</option>
+                  </>
+                )}
               </select>
             </div>
           ))}
