@@ -67,24 +67,48 @@ class SupabaseService {
         .from('zipcodes')
         .select('*');
 
-      // Text search (ZIP, city, county)
-      if (query) {
-        queryBuilder = queryBuilder.or(`zipcode.ilike.%${query}%,city.ilike.%${query}%,county.ilike.%${query}%`);
+      // Parse query for city, state combinations (e.g., "Lincoln, NE")
+      let parsedCity = city;
+      let parsedState = state;
+      let parsedCounty = county;
+      let parsedQuery = query;
+
+      if (query && !city && !state) {
+        // Check if query contains city, state format
+        const cityStateMatch = query.match(/^([^,]+),\s*([A-Z]{2})$/);
+        if (cityStateMatch) {
+          parsedCity = cityStateMatch[1].trim();
+          parsedState = cityStateMatch[2].trim();
+          parsedQuery = null; // Don't use raw query
+        } else {
+          // Check if query contains county, state format
+          const countyStateMatch = query.match(/^([^,]+)\s+County,\s*([A-Z]{2})$/i);
+          if (countyStateMatch) {
+            parsedCounty = countyStateMatch[1].trim();
+            parsedState = countyStateMatch[2].trim();
+            parsedQuery = null; // Don't use raw query
+          }
+        }
+      }
+
+      // Text search (ZIP, city, county) - only if not parsed as city/state
+      if (parsedQuery) {
+        queryBuilder = queryBuilder.or(`zipcode.ilike.%${parsedQuery}%,city.ilike.%${parsedQuery}%,county.ilike.%${parsedQuery}%`);
       }
 
       // State filter
-      if (state) {
-        queryBuilder = queryBuilder.eq('state_code', state);
+      if (parsedState) {
+        queryBuilder = queryBuilder.eq('state_code', parsedState);
       }
 
       // County filter
-      if (county) {
-        queryBuilder = queryBuilder.eq('county', county);
+      if (parsedCounty) {
+        queryBuilder = queryBuilder.eq('county', parsedCounty);
       }
 
       // City filter
-      if (city) {
-        queryBuilder = queryBuilder.eq('city', city);
+      if (parsedCity) {
+        queryBuilder = queryBuilder.eq('city', parsedCity);
       }
 
       // Spatial pre-filter (bounding box) to reduce transfer for radius/polygon)

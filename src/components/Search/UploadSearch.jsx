@@ -24,7 +24,7 @@ const UploadSearch = ({ handleCSVUpload, handleRemoveFile }) => {
         isDarkMode={isDarkMode}
       />
       {/* Progress Indicator */}
-      {processingProgress.total > 0 && uploadProcessing && (
+      {processingProgress?.total > 0 && uploadProcessing && (
         <div className={`px-2 pb-2 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
           <div className="flex justify-between text-xs mb-1">
             <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>

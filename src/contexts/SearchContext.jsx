@@ -2144,14 +2144,23 @@ export const SearchProvider = ({ children }) => {
 
   // Analyze columns for automatic mapping
   const analyzeColumnForType = useCallback((header, sampleValues) => {
-    const lowerHeader = header.toLowerCase();
+    const lowerHeader = header.toLowerCase().replace(/[_\s-]/g, ''); // Remove separators for matching
 
-    // Direct header matches
-    if (/^zip|postal|postcode/i.test(lowerHeader)) return 'zip';
-    if (/^city|town|place|municipality/i.test(lowerHeader)) return 'city';
-    if (/^county|parish/i.test(lowerHeader)) return 'county';
-    if (/^state|province|st$/i.test(lowerHeader)) return 'state';
-    if (/^location|address|query/i.test(lowerHeader)) return 'general';
+    // Direct header matches - more robust patterns
+    // ZIP variations: zip, zips, zipcode, zip_code, zip code, postal, postal_code, postal code, postcode
+    if (/^(zip|zips|zipcode|zipcodee|postalcode|postal|postcode)s?$/i.test(lowerHeader)) return 'zip';
+
+    // City variations: city, cities, town, place, municipality, city_name, cityname
+    if (/^(city|cities|town|towns|place|municipality|cityname)$/i.test(lowerHeader)) return 'city';
+
+    // County variations: county, counties, parish, county_name, countyname
+    if (/^(county|counties|parish|parishes|countyname)$/i.test(lowerHeader)) return 'county';
+
+    // State variations: state, st, province, state_code, statecode, state_name, statename
+    if (/^(state|states|st|province|statecode|statename)$/i.test(lowerHeader)) return 'state';
+
+    // General location variations: location, address, query
+    if (/^(location|address|query|search)$/i.test(lowerHeader)) return 'general';
 
     // Analyze sample values
     const nonEmpty = sampleValues.filter(v => v && v.toString().trim());

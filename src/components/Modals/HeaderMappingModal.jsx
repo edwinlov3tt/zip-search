@@ -122,7 +122,7 @@ const HeaderMappingModal = ({
         )}
 
         {/* Progress Indicator */}
-        {processingProgress.total > 0 && (
+        {processingProgress?.total > 0 && (
           <div className="mb-4">
             <div className="flex justify-between text-sm mb-1">
               <span>Processing...</span>
