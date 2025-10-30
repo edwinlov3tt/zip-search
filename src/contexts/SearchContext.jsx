@@ -936,6 +936,9 @@ export const SearchProvider = ({ children }) => {
       setSearchPerformed(true);
       setApiError(null);
       setIsSearchMode(false);
+
+      // Show drawer when search completes
+      setDrawerState('half');
     }
 
     try {
@@ -2725,6 +2728,9 @@ export const SearchProvider = ({ children }) => {
 
       // Auto-switch to streets tab
       setActiveTab('streets');
+
+      // Show drawer when search completes
+      setDrawerState('half');
 
       setApiError(null);
     } catch (error) {
