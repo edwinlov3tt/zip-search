@@ -10,12 +10,7 @@ const DrawingControls = ({ featureGroupRef, onCreated, onDeleted }) => {
         onCreated={onCreated}
         onDeleted={onDeleted}
         draw={{
-          rectangle: {
-            shapeOptions: {
-              color: '#dc2626',
-              fillOpacity: 0.1
-            }
-          },
+          rectangle: false, // Disabled - doesn't work properly
           polygon: {
             allowIntersection: false,
             shapeOptions: {

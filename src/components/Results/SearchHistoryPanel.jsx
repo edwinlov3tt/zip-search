@@ -17,6 +17,11 @@ const SearchHistoryPanel = () => {
     removeAddressSearch,
     updateAddressSearchSettings,
     executeAddressSearchFromHistory,
+    polygonSearches,
+    activePolygonSearchId,
+    removePolygonSearch,
+    updatePolygonSearchSettings,
+    executePolygonSearchFromHistory,
     searchMode,
     isSearchExcluded,
     toggleSearchExclusion
@@ -115,6 +120,7 @@ const SearchHistoryPanel = () => {
 
   const includedSearches = radiusSearches.filter(search => !isSearchExcluded(search.id));
   const isAddressMode = searchMode === 'address';
+  const isPolygonMode = searchMode === 'polygon';
 
   // Get data for a specific search
   const getSearchData = (searchId, dataType) => {
@@ -211,7 +217,11 @@ const SearchHistoryPanel = () => {
   };
 
   // Check if there are any searches based on mode
-  const hasSearches = isAddressMode ? addressSearches.length > 0 : radiusSearches.length > 0;
+  const hasSearches = isAddressMode
+    ? addressSearches.length > 0
+    : isPolygonMode
+      ? polygonSearches.length > 0
+      : radiusSearches.length > 0;
 
   if (!hasSearches) {
     return (
@@ -219,7 +229,13 @@ const SearchHistoryPanel = () => {
         <div className="text-center">
           <MapPin className="h-12 w-12 mx-auto mb-3 opacity-50" />
           <p className="text-lg font-medium mb-2">No search history</p>
-          <p className="text-sm">{isAddressMode ? 'Your address searches will appear here' : 'Your radius searches will appear here'}</p>
+          <p className="text-sm">
+            {isAddressMode
+              ? 'Your address searches will appear here'
+              : isPolygonMode
+                ? 'Your polygon searches will appear here'
+                : 'Your radius searches will appear here'}
+          </p>
         </div>
       </div>
     );
@@ -252,8 +268,12 @@ const SearchHistoryPanel = () => {
         className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         style={{ gridAutoRows: '1fr' }}
       >
-        {(isAddressMode ? addressSearches : radiusSearches).map((search, index) => {
-          const isActive = isAddressMode ? search.id === activeAddressSearchId : search.id === activeRadiusSearchId;
+        {(isAddressMode ? addressSearches : isPolygonMode ? polygonSearches : radiusSearches).map((search, index) => {
+          const isActive = isAddressMode
+            ? search.id === activeAddressSearchId
+            : isPolygonMode
+              ? search.id === activePolygonSearchId
+              : search.id === activeRadiusSearchId;
           const settings = search.settings || {};
           const isExcluded = isSearchExcluded(search.id);
           const searchNumber = search.sequence ?? index + 1;
@@ -274,13 +294,23 @@ const SearchHistoryPanel = () => {
                       ? 'bg-gray-700 border-gray-600'
                       : 'bg-gray-50 border-gray-200'
               }`}
-              onClick={() => isAddressMode ? handleFocusAddressSearch(search) : handleFocusSearch(search)}
+              onClick={() =>
+                isAddressMode
+                  ? handleFocusAddressSearch(search)
+                  : isPolygonMode
+                    ? executePolygonSearchFromHistory(search.id)
+                    : handleFocusSearch(search)
+              }
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  isAddressMode ? handleFocusAddressSearch(search) : handleFocusSearch(search);
+                  isAddressMode
+                    ? handleFocusAddressSearch(search)
+                    : isPolygonMode
+                      ? executePolygonSearchFromHistory(search.id)
+                      : handleFocusSearch(search);
                 }
               }}
             >
@@ -521,37 +551,7 @@ const SearchHistoryPanel = () => {
                   Radius
                 </button>
 
-                <button
-                  onClick={() => handleToggleSetting(search, 'showMarkers')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
-                    settings.showMarkers
-                      ? isDarkMode
-                        ? 'bg-green-600 text-white hover:bg-green-500'
-                        : 'bg-green-500 text-white hover:bg-green-600'
-                      : isDarkMode
-                        ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                  Markers
-                </button>
-
-                <button
-                  onClick={() => handleToggleSetting(search, 'showZipBorders')}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
-                    settings.showZipBorders
-                      ? isDarkMode
-                        ? 'bg-purple-600 text-white hover:bg-purple-500'
-                        : 'bg-purple-500 text-white hover:bg-purple-600'
-                      : isDarkMode
-                        ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  <Grid3X3 className="h-3.5 w-3.5" />
-                  ZIP Borders
-                </button>
+                {/* Removed Markers and ZIP Borders toggles - Markers can't be filtered per-search without searchIds, ZIP Borders feature is disabled */}
               </div>
 
               {/* Search info */}
