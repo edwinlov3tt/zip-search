@@ -942,6 +942,8 @@ export const SearchProvider = ({ children }) => {
     const searchEntry = polygonSearches.find(s => s.id === searchId);
     if (!searchEntry) return null;
 
+    // Set mode to polygon when executing from history
+    setSearchMode('polygon');
     setActivePolygonSearchId(searchId);
 
     // Trigger the search if shape data exists
@@ -1392,6 +1394,10 @@ export const SearchProvider = ({ children }) => {
 
   // Search mode change handler
   const handleSearchModeChange = useCallback((newMode) => {
+    // Define "sibling" modes that share results (radius & polygon are siblings)
+    const isSiblingSwitch = (searchMode === 'radius' && newMode === 'polygon') ||
+                           (searchMode === 'polygon' && newMode === 'radius');
+
     // Check if switching away from address or geocode mode with results
     const shouldPrompt = (searchMode === 'address' && addressSearches.length > 0) ||
                          (searchMode === 'geocode' && (geocodeResults?.length > 0 || geocodePreparedAddresses.length > 0));
@@ -1410,6 +1416,19 @@ export const SearchProvider = ({ children }) => {
       clearGeocodeResults();
     }
 
+    // Clear ZIP/City/County/State results when switching between "cousin" modes
+    // BUT keep results when switching between sibling modes (radius ↔ polygon)
+    if (!isSiblingSwitch) {
+      // Switching to a "cousin" mode - clear ZIP results
+      const shouldClearResults = (searchMode === 'radius' || searchMode === 'polygon') &&
+                                (newMode !== 'radius' && newMode !== 'polygon');
+
+      if (shouldClearResults) {
+        clearResults();
+        setSearchPerformed(false);
+      }
+    }
+
     // Normal mode switch
     setSearchMode(newMode);
     // Reset only mode-specific UI state without clearing results
@@ -1417,10 +1436,10 @@ export const SearchProvider = ({ children }) => {
     setSearchTerm('');
     setRadiusCenter(null);
     setPlacingRadius(false);
-    setIsSearchMode(newMode === 'radius'); // Only radius mode needs search mode UI
+    setIsSearchMode(newMode === 'radius' || newMode === 'polygon'); // Both radius and polygon use search mode UI
     // Expand the search panel downward to show the reset button
     setIsSearchPanelCollapsed(false);
-  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, setIsSearchPanelCollapsed]);
+  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed]);
 
   useEffect(() => {
     if (Object.keys(searchResultsById).length === 0) return;
