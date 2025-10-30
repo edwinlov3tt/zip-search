@@ -62,7 +62,7 @@ export const SearchProvider = ({ children }) => {
     clearResults
   } = useResults();
 
-  const { setMapCenter, setMapZoom, mapRef } = useMap();
+  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes } = useMap();
 
   const { setIsSearchPanelCollapsed, setActiveTab, setDrawerState } = useUI();
 
@@ -897,16 +897,38 @@ export const SearchProvider = ({ children }) => {
   }, [getNextShapeNumber, polygonDisplaySettings]);
 
   const removePolygonSearch = useCallback((id) => {
+    // Find the search to get the shape info before removing
+    const searchToRemove = polygonSearches.find(s => s.id === id);
+
     setPolygonSearches(prev => {
       const updated = prev.filter(search => search.id !== id);
       // No need to track available numbers, getNextShapeNumber finds the lowest unused
       return updated;
     });
 
+    // Remove the shape from the map's drawnShapes
+    if (searchToRemove?.shape?.layer) {
+      setDrawnShapes(prev =>
+        prev.filter(shape => shape.layer._leaflet_id !== searchToRemove.shape.layer._leaflet_id)
+      );
+
+      // Remove the layer from the feature group/map
+      if (featureGroupRef.current && searchToRemove.shape.layer) {
+        featureGroupRef.current.removeLayer(searchToRemove.shape.layer);
+      }
+    }
+
     if (activePolygonSearchId === id) {
       setActivePolygonSearchId(null);
     }
-  }, [activePolygonSearchId]);
+  }, [activePolygonSearchId, polygonSearches, setDrawnShapes, featureGroupRef]);
+
+  const removePolygonSearchByShapeId = useCallback((shapeId) => {
+    const searchToRemove = polygonSearches.find(s => s.shape?.id === shapeId);
+    if (searchToRemove) {
+      removePolygonSearch(searchToRemove.id);
+    }
+  }, [polygonSearches, removePolygonSearch]);
 
   const updatePolygonSearchSettings = useCallback((id, updateFn) => {
     setPolygonSearches(prev => prev.map(search =>
@@ -932,11 +954,13 @@ export const SearchProvider = ({ children }) => {
 
   const performSingleShapeSearch = useCallback(async (shape, appendResults = false) => {
     setIsLoading(true);
-    if (!appendResults) {
-      setSearchPerformed(true);
-      setApiError(null);
-      setIsSearchMode(false);
 
+    // Always mark as performed and show drawer
+    setSearchPerformed(true);
+    setApiError(null);
+
+    if (!appendResults) {
+      setIsSearchMode(false);
       // Show drawer when search completes
       setDrawerState('half');
     }
@@ -2799,6 +2823,7 @@ export const SearchProvider = ({ children }) => {
     setPolygonDisplaySettings,
     addPolygonSearch,
     removePolygonSearch,
+    removePolygonSearchByShapeId,
     updatePolygonSearchSettings,
     executePolygonSearchFromHistory,
     performSingleShapeSearch,
