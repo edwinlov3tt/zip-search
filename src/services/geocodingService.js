@@ -332,13 +332,13 @@ class GeocodingService {
    * @returns {Promise<{job_id: string, total_addresses: number, status_url: string, stream_url: string}>}
    */
   async submitBatchGeocodeJob(addresses) {
-    // Use proxy path for development, or full URL for production
-    const BATCH_GEOCODE_BASE_URL = import.meta.env.DEV
-      ? '/geocoder/geocode-api.php'
-      : 'https://ignite.edwinlovett.com/geocoder/geocode-api.php';
+    // Use Vite proxy for development, Vercel proxy for production
+    const BATCH_GEOCODE_URL = import.meta.env.DEV
+      ? '/geocoder/geocode-api.php/api/batch'
+      : '/api/geocode-proxy';
 
     try {
-      const response = await fetch(`${BATCH_GEOCODE_BASE_URL}/api/batch`, {
+      const response = await fetch(BATCH_GEOCODE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -393,7 +393,8 @@ class GeocodingService {
    * @returns {Promise<{completed: boolean, percentage: number, processed: number, total_addresses: number, error?: string}>}
    */
   async pollJobStatus(jobId) {
-    // Use proxy path for development, or full URL for production
+    // Note: Currently not used as API returns results synchronously
+    // Keeping for potential future async support
     const BATCH_GEOCODE_BASE_URL = import.meta.env.DEV
       ? '/geocoder/geocode-api.php'
       : 'https://ignite.edwinlovett.com/geocoder/geocode-api.php';
@@ -420,7 +421,8 @@ class GeocodingService {
    * @returns {Promise<{results: Array}>}
    */
   async getJobResults(jobId, format = 'json') {
-    // Use proxy path for development, or full URL for production
+    // Note: Currently not used as API returns results synchronously
+    // Keeping for potential future async support
     const BATCH_GEOCODE_BASE_URL = import.meta.env.DEV
       ? '/geocoder/geocode-api.php'
       : 'https://ignite.edwinlovett.com/geocoder/geocode-api.php';
