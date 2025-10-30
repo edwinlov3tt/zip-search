@@ -2304,17 +2304,25 @@ export const SearchProvider = ({ children }) => {
       console.log('Sample queries:', transformedData.slice(0, 5)); // Log first 5 for debugging
       await processDataInBatches(transformedData);
 
+      // Mark search as performed and show drawer
+      setSearchPerformed(true);
+      setDrawerState('half');
+      setUploadProcessing(false);
+
       // Close modal
       setShowHeaderMappingModal(false);
       setCsvHeaders([]);
       setCsvPreviewData([]);
       setCsvFullData([]);
       setColumnMapping({});
+
+      console.log('✅ CSV upload processing complete');
     } catch (error) {
+      console.error('❌ CSV upload processing error:', error);
       setUploadError(error.message);
       setUploadProcessing(false);
     }
-  }, [csvFullData, columnMapping, processDataInBatches]);
+  }, [csvFullData, columnMapping, processDataInBatches, setDrawerState]);
 
   // CSV Upload handler with Papa Parse
   const handleCSVUpload = useCallback((file) => {
