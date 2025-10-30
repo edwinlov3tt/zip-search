@@ -2376,7 +2376,66 @@ export const SearchProvider = ({ children }) => {
           return;
         }
 
-        // Auto-detect column types
+        // Detect headerless CSV files (e.g., exported ZIP lists)
+        // If the header looks like a ZIP code or the file has only 1 column with numeric data,
+        // it's likely a headerless file
+        const isLikelyHeaderless = headers.length === 1 && (
+          /^\d{5}(-\d{4})?$/.test(headers[0]) || // Header is a ZIP code
+          /^\d+$/.test(headers[0]) // Header is just numbers
+        );
+
+        if (isLikelyHeaderless) {
+          console.log('🟡 Detected headerless CSV file. Re-parsing without headers...');
+
+          // Re-parse the file without headers
+          Papa.parse(file, {
+            header: false,
+            skipEmptyLines: true,
+            delimiter: results.meta.delimiter,
+            complete: (headerlessResults) => {
+              const allData = headerlessResults.data || [];
+              console.log('🔵 Headerless parse complete. Total rows:', allData.length);
+
+              if (allData.length === 0) {
+                setUploadError('No valid data rows found in CSV');
+                setUploadProcessing(false);
+                return;
+              }
+
+              // Create synthetic header based on data analysis
+              const firstColumnValues = allData.slice(0, 10).map(row => row[0]);
+              const syntheticHeader = analyzeColumnForType('data', firstColumnValues);
+
+              console.log('🔵 Detected column type:', syntheticHeader);
+
+              // Convert array data to object format with synthetic header
+              const convertedData = allData.map(row => ({
+                [syntheticHeader]: row[0]
+              }));
+
+              // Set up mapping with synthetic header
+              const syntheticMapping = {
+                [syntheticHeader]: syntheticHeader
+              };
+
+              // Store data and show mapping modal
+              setCsvHeaders([syntheticHeader]);
+              setCsvPreviewData(convertedData.slice(0, 10));
+              setCsvFullData(convertedData);
+              setColumnMapping(syntheticMapping);
+              setShowHeaderMappingModal(true);
+              setUploadProcessing(false);
+            },
+            error: (error) => {
+              console.error('🔴 Headerless CSV parsing error:', error);
+              setUploadError(`Failed to parse CSV: ${error.message}`);
+              setUploadProcessing(false);
+            }
+          });
+          return; // Exit early, don't continue with header parsing
+        }
+
+        // Auto-detect column types for normal CSV with headers
         const autoMapping = {};
         headers.forEach(header => {
           const sampleValues = preview.map(row => row[header]);
