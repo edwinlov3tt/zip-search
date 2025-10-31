@@ -553,10 +553,6 @@ export const SearchProvider = ({ children }) => {
         // Search addresses via Overpass API
         const addresses = await overpassService.searchAddressesByRadius(lat, lng, radiusMeters);
 
-        if (addresses.length === 0) {
-          setApiError('No addresses found in this area. Try a different location or larger radius.');
-        }
-
         // Set cooldown timer
         setLastOverpassCall(Date.now());
 
@@ -576,10 +572,13 @@ export const SearchProvider = ({ children }) => {
         // Update address results in ResultsContext
         setAddressResults(addresses);
 
-        // Auto-switch to streets tab
+        // Auto-switch to streets tab and show drawer (even if no results)
         setActiveTab('streets');
+        setDrawerState('half');
 
-        if (addresses.length > 0) {
+        if (addresses.length === 0) {
+          setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas. Try a different location or larger radius.');
+        } else {
           setApiError(null);
         }
       } catch (error) {
@@ -1546,8 +1545,16 @@ export const SearchProvider = ({ children }) => {
         // Update address results in ResultsContext
         setAddressResults(addresses);
 
-        // Auto-switch to streets tab
+        // Auto-switch to streets tab and show drawer (even if no results)
         setActiveTab('streets');
+        setDrawerState('half');
+
+        // Show message if no results found
+        if (addresses.length === 0) {
+          setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas. Try a different location or larger radius.');
+        } else {
+          setApiError(null);
+        }
 
         setSearchPerformed(true);
         return { addresses, searchEntry };
@@ -2859,7 +2866,12 @@ export const SearchProvider = ({ children }) => {
       // Auto-switch to streets tab
       setActiveTab('streets');
 
-      setApiError(null);
+      // Show message if no results found
+      if (results.length === 0) {
+        setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas.');
+      } else {
+        setApiError(null);
+      }
       console.log('✅ [ADDRESS SEARCH - Polygon] Search completed successfully', { resultCount: results.length });
     } catch (error) {
       setApiError(error.message || 'Failed to search addresses');

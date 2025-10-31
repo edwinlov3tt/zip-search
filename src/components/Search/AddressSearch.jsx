@@ -278,7 +278,9 @@ const AddressSearch = ({
               ) : !searchPerformed ? (
                 <>
                   <Search className="h-4 w-4" />
-                  <span className="text-sm">Search</span>
+                  <span className="text-sm">
+                    Search{addressSearches.length > 0 ? ` (${addressSearches.length + 1})` : ''}
+                  </span>
                 </>
               ) : (
                 <>
