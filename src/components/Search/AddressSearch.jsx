@@ -17,7 +17,6 @@ const AddressSearch = ({
     searchMode,
     searchPerformed,
     isLoading,
-    isSearching,
     addressSearches,
     activeAddressSearchId,
     addressSubMode,
@@ -37,7 +36,10 @@ const AddressSearch = ({
     isDarkMode,
     autocompleteResults,
     showAutocomplete,
-    setShowAutocomplete
+    setShowAutocomplete,
+    setAutocompleteResults,
+    isSearching,
+    setIsSearching
   } = useUI();
   const [openMenuId, setOpenMenuId] = useState(null);
   const chipsContainerRef = useRef(null);
@@ -86,7 +88,7 @@ const AddressSearch = ({
   const handleAddressSearch = () => {
     // Validation happens in the main handleSearch function
     // Just pass the mode and parameters
-    const uiContext = { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete };
+    const uiContext = { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching };
     handleSearch({
       addressSubMode,
       radius: addressRadius,
@@ -174,8 +176,8 @@ const AddressSearch = ({
                 type="text"
                 placeholder="Search location..."
                 value={searchTerm}
-                onChange={(e) => handleSearchInputChange(e, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete })}
-                onBlur={() => handleAutocompleteBlur({ isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete })}
+                onChange={(e) => handleSearchInputChange(e, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
+                onBlur={() => handleAutocompleteBlur({ isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
                 onFocus={() => searchTerm.length >= 2 && autocompleteResults.length > 0 && setShowAutocomplete(true)}
                 disabled={cooldownActive}
                 className={`w-full h-9 pl-9 pr-3 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
@@ -200,7 +202,7 @@ const AddressSearch = ({
               )}
 
               {showAutocomplete && autocompleteResults.length > 0 && (
-                <div className={`absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg shadow-lg border z-50 ${
+                <div className={`absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg shadow-lg border z-[9999] ${
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600'
                     : 'bg-white border-gray-200'
@@ -214,7 +216,7 @@ const AddressSearch = ({
                           : 'hover:bg-gray-50 border-gray-100 text-gray-900'
                       }`}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete })}
+                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, isSearching, setIsSearching })}
                     >
                       <div className="flex items-center space-x-3">
                         <span className="text-lg">{geocodingService.getResultIcon(result.type)}</span>
@@ -388,12 +390,73 @@ const AddressSearch = ({
 
       {/* Polygon Mode UI */}
       {addressSubMode === 'polygon' && (
-        <div className="w-full" ref={chipsContainerRef}>
-          <div className={`min-h-[44px] text-xs px-3 py-2 rounded border ${
-            isDarkMode
-              ? 'text-gray-200 bg-gray-700/50 border-gray-600'
-              : 'text-gray-600 bg-gray-50 border-gray-200'
-          }`}>
+        <>
+          {/* Search bar for finding location to draw polygon around */}
+          <div className="flex flex-row items-center gap-3 w-full">
+            <div className="relative flex-1 min-w-0">
+              <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 z-10 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
+              <input
+                type="text"
+                placeholder="Search location to draw polygon..."
+                value={searchTerm}
+                onChange={(e) => handleSearchInputChange(e, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
+                onBlur={() => handleAutocompleteBlur({ isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
+                onFocus={() => searchTerm.length >= 2 && autocompleteResults.length > 0 && setShowAutocomplete(true)}
+                className={`w-full h-9 pl-9 pr-3 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+                  isDarkMode
+                    ? 'bg-gray-700 text-white border-gray-600 placeholder-gray-400'
+                    : 'bg-white text-gray-900 border-gray-300 placeholder-gray-500'
+                }`}
+              />
+
+              {isSearching && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                </div>
+              )}
+
+              {showAutocomplete && autocompleteResults.length > 0 && (
+                <div className={`absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg shadow-lg border z-[9999] ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600'
+                    : 'bg-white border-gray-200'
+                }`}>
+                  {autocompleteResults.map((result) => (
+                    <div
+                      key={result.id || Math.random()}
+                      className={`px-3 py-2 cursor-pointer transition-colors border-b last:border-b-0 ${
+                        isDarkMode
+                          ? 'hover:bg-gray-600 border-gray-600 text-white'
+                          : 'hover:bg-gray-50 border-gray-100 text-gray-900'
+                      }`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, isSearching, setIsSearching })}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="text-lg">{geocodingService.getResultIcon(result.type)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {geocodingService.formatDisplayName(result)}
+                          </p>
+                          <p className={`text-xs truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {result.type ? result.type.charAt(0).toUpperCase() + result.type.slice(1) : 'Location'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Helper text and chips */}
+          <div className="w-full" ref={chipsContainerRef}>
+            <div className={`min-h-[44px] text-xs px-3 py-2 rounded border ${
+              isDarkMode
+                ? 'text-gray-200 bg-gray-700/50 border-gray-600'
+                : 'text-gray-600 bg-gray-50 border-gray-200'
+            }`}>
             {addressSearches.length === 0 ? (
               <p className="text-center">
                 Draw shapes on the map to search within them
@@ -471,6 +534,7 @@ const AddressSearch = ({
             )}
           </div>
         </div>
+        </>
       )}
     </div>
   );

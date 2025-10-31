@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import googlePlacesService from './googlePlacesService';
 
 class GeocodingService {
   constructor() {
@@ -31,7 +32,7 @@ class GeocodingService {
     });
   }
 
-  // Main geocoding method - tries API first, then fallbacks
+  // Main geocoding method - tries Google Places first, then fallbacks
   async searchPlaces(query, limit = 8) {
     if (!query || query.length < 2) {
       return [];
@@ -44,8 +45,23 @@ class GeocodingService {
       return cached;
     }
 
+    // Try Google Places first if quota available
     try {
-      // Try API first
+      if (googlePlacesService.shouldUseGoogle()) {
+        const googleResults = await googlePlacesService.searchPlaces(query, limit);
+
+        // If Google returns results, use them
+        if (googleResults && googleResults.length > 0) {
+          this.setCache(cacheKey, googleResults);
+          return googleResults;
+        }
+      }
+    } catch (error) {
+      console.warn('Google Places failed, falling back to Nominatim:', error);
+    }
+
+    // Try API proxy
+    try {
       const result = await apiClient.get('geocoding/places', {
         q: query,
         limit,
@@ -61,7 +77,7 @@ class GeocodingService {
       // Silent fallback to Nominatim
     }
 
-    // Fallback to Nominatim directly
+    // Final fallback to Nominatim directly
     return await this.searchPlacesNominatim(query, limit);
   }
 

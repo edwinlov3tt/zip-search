@@ -62,7 +62,7 @@ export const SearchProvider = ({ children }) => {
     clearResults
   } = useResults();
 
-  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType } = useMap();
+  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType, mapType } = useMap();
 
   const { setIsSearchPanelCollapsed, setActiveTab, setDrawerState } = useUI();
 
@@ -1438,10 +1438,9 @@ export const SearchProvider = ({ children }) => {
     // Auto-switch map type for Address Search mode (satellite view shows buildings better)
     if (newMode === 'address' && searchMode !== 'address') {
       // Switching TO address mode - save current map type and switch to satellite
-      setMapType(prevType => {
-        setPreviousMapType(prevType);
-        return 'satellite';
-      });
+      // Save current mapType before switching (avoid nested setState)
+      setPreviousMapType(mapType);
+      setMapType('satellite');
     } else if (searchMode === 'address' && newMode !== 'address' && previousMapType) {
       // Switching FROM address mode - restore previous map type
       setMapType(previousMapType);
@@ -1897,9 +1896,6 @@ export const SearchProvider = ({ children }) => {
 
     // Set searching state
     setIsSearching(true);
-    if (uiContext) {
-      uiContext.setIsSearching(true);
-    }
 
     // Debounce the search
     searchDebounceRef.current = setTimeout(async () => {
@@ -1918,9 +1914,6 @@ export const SearchProvider = ({ children }) => {
         }
       } finally {
         setIsSearching(false);
-        if (uiContext) {
-          uiContext.setIsSearching(false);
-        }
       }
     }, 300); // 300ms debounce
   }, [selectedLocation]);
@@ -1936,12 +1929,31 @@ export const SearchProvider = ({ children }) => {
   }, []);
 
   const handleAutocompleteSelect = useCallback(async (location, uiContext) => {
-    setSelectedLocation(location);
-    setRadiusCenter([location.lat, location.lng]);
+    // Handle Google Places results (need to fetch full details)
+    let finalLocation = location;
+
+    if (location.source === 'google' && location.id) {
+      try {
+        const googlePlacesService = (await import('../services/googlePlacesService')).default;
+        const placeDetails = await googlePlacesService.selectPlace(location.id);
+
+        if (placeDetails) {
+          finalLocation = placeDetails;
+        } else {
+          console.warn('Failed to get Google Place details, using prediction data');
+        }
+      } catch (error) {
+        console.error('Error fetching Google Place details:', error);
+      }
+    }
+
+    setSelectedLocation(finalLocation);
 
     // Update search term with location name
-    if (location.display_name) {
-      setSearchTerm(location.display_name);
+    if (finalLocation.displayName) {
+      setSearchTerm(finalLocation.displayName);
+    } else if (finalLocation.display_name) {
+      setSearchTerm(finalLocation.display_name);
     }
 
     // Hide autocomplete dropdown
@@ -1951,71 +1963,150 @@ export const SearchProvider = ({ children }) => {
     }
 
     // Center map on selected location
-    setMapCenter([location.lat, location.lng]);
+    setMapCenter([finalLocation.lat, finalLocation.lng]);
     setMapZoom(13);
 
-    // Auto-trigger radius search (matching GeoApplication.jsx behavior)
-    setIsLoading(true);
-    setSearchPerformed(true);
-    setApiError(null);
-    setIsSearchMode(false);
+    // Check if we're in Address Search mode
+    if (searchMode === 'address' && addressSubMode === 'polygon') {
+      // Polygon mode: Just center the map, don't trigger search
+      // User will draw polygon manually after centering
+      setApiError(null);
+      return; // Exit early - don't trigger any search
+    } else if (searchMode === 'address' && addressSubMode === 'radius') {
+      // Radius mode: Trigger Address Search
+      setIsLoading(true);
+      setSearchPerformed(true);
+      setApiError(null);
 
-    try {
-      const searchParams = {
-        lat: location.lat,
-        lng: location.lng,
-        radius: radius,
-        limit: 500,
-        offset: 0
-      };
-
-      const searchResult = await ZipCodeService.search(searchParams);
-      const normalizedResults = normalizeZipResults(searchResult?.results);
-      setZipResults(normalizedResults);
-      setTotalResults(typeof searchResult?.total === 'number' ? searchResult.total : normalizedResults.length);
-      setHasMoreResults(Boolean(searchResult?.hasMore));
-      setCurrentPage(0);
-      updateAggregatedResults(normalizedResults);
-
-      // Add to radius search history
-      const entry = {
-        id: generateRadiusSearchId(),
-        label: location.display_name || `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)} (${radius}m)`,
-        radius: radius,
-        center: [location.lat, location.lng],
-        query: location.display_name || null,
-        summary: {
-          zip: normalizedResults[0]?.zipCode || null,
-          city: normalizedResults[0]?.city || null,
-          state: normalizedResults[0]?.state || null
-        },
-        settings: createRadiusSettings(),
-        searchParams: searchParams,
-        selectedLocation: location,
-        signature: buildRadiusSignature(location.lat, location.lng, radius),
-        timestamp: Date.now()
-      };
-
-      setRadiusSearches(prev => {
-        const filtered = prev.filter(existing => existing.signature !== entry.signature);
-        const next = [entry, ...filtered];
-        if (next.length > MAX_RADIUS_HISTORY) {
-          next.length = MAX_RADIUS_HISTORY;
+      try {
+        // Check cooldown
+        const cooldown = checkOverpassCooldown();
+        if (cooldown > 0) {
+          setApiError(`Please wait ${cooldown} seconds before searching again`);
+          setIsLoading(false);
+          return;
         }
-        return next;
-      });
 
-      setActiveRadiusSearchId(entry.id);
-      setRadiusDisplaySettings(createRadiusSettings(entry.settings));
+        const radiusMeters = milesToMeters(addressRadius);
+        const addresses = await overpassService.searchAddressesByRadius(finalLocation.lat, finalLocation.lng, radiusMeters);
 
-    } catch (error) {
-      console.error('Autocomplete search failed:', error);
-      setApiError(error.message);
-      clearResults();
-    } finally {
-      setIsLoading(false);
+        // Set cooldown timer
+        setLastOverpassCall(Date.now());
+
+        // Create search entry
+        const displayName = finalLocation.displayName || finalLocation.display_name;
+        const searchLabel = `${displayName || finalLocation.lat.toFixed(4) + ', ' + finalLocation.lng.toFixed(4)} (${addressRadius}mi)`;
+        const params = {
+          mode: 'radius',
+          lat: finalLocation.lat,
+          lng: finalLocation.lng,
+          radius: addressRadius,
+          center: [finalLocation.lat, finalLocation.lng],
+          label: searchLabel
+        };
+
+        addAddressSearch(params, addresses, null);
+
+        // Update address results in ResultsContext
+        setAddressResults(addresses);
+
+        // Auto-switch to streets tab and show drawer
+        setActiveTab('streets');
+        setDrawerState('half');
+
+        if (addresses.length === 0) {
+          setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas. Try a different location or larger radius.');
+        } else {
+          setApiError(null);
+        }
+      } catch (error) {
+        console.error('Address search from autocomplete failed:', error);
+        setApiError(error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // Default: ZIP code radius search
+      setRadiusCenter([finalLocation.lat, finalLocation.lng]);
+      setIsLoading(true);
+      setSearchPerformed(true);
+      setApiError(null);
+      setIsSearchMode(false);
+
+      try {
+        const searchParams = {
+          lat: finalLocation.lat,
+          lng: finalLocation.lng,
+          radius: radius,
+          limit: 500,
+          offset: 0
+        };
+
+        const searchResult = await ZipCodeService.search(searchParams);
+        const normalizedResults = normalizeZipResults(searchResult?.results);
+        setZipResults(normalizedResults);
+        setTotalResults(typeof searchResult?.total === 'number' ? searchResult.total : normalizedResults.length);
+        setHasMoreResults(Boolean(searchResult?.hasMore));
+        setCurrentPage(0);
+        updateAggregatedResults(normalizedResults);
+
+        // Add to radius search history
+        const displayName = finalLocation.displayName || finalLocation.display_name;
+        const entry = {
+          id: generateRadiusSearchId(),
+          label: displayName || `${finalLocation.lat.toFixed(3)}, ${finalLocation.lng.toFixed(3)} (${radius}m)`,
+          radius: radius,
+          center: [finalLocation.lat, finalLocation.lng],
+          query: displayName || null,
+          summary: {
+            zip: normalizedResults[0]?.zipCode || null,
+            city: normalizedResults[0]?.city || null,
+            state: normalizedResults[0]?.state || null
+          },
+          settings: createRadiusSettings(),
+          searchParams: searchParams,
+          selectedLocation: finalLocation,
+          signature: buildRadiusSignature(finalLocation.lat, finalLocation.lng, radius),
+          timestamp: Date.now()
+        };
+
+        setRadiusSearches(prev => {
+          const filtered = prev.filter(existing => existing.signature !== entry.signature);
+          const next = [entry, ...filtered];
+          if (next.length > MAX_RADIUS_HISTORY) {
+            next.length = MAX_RADIUS_HISTORY;
+          }
+          return next;
+        });
+
+        setActiveRadiusSearchId(entry.id);
+        setRadiusDisplaySettings(createRadiusSettings(entry.settings));
+
+      } catch (error) {
+        console.error('Autocomplete search failed:', error);
+        setApiError(error.message);
+        clearResults();
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }, [radius, setMapCenter, setMapZoom]);
+  }, [
+    searchMode,
+    addressSubMode,
+    addressRadius,
+    radius,
+    setMapCenter,
+    setMapZoom,
+    checkOverpassCooldown,
+    setLastOverpassCall,
+    addAddressSearch,
+    setAddressResults,
+    setActiveTab,
+    setDrawerState,
+    normalizeZipResults,
+    updateAggregatedResults,
+    createRadiusSettings
+  ]);
 
   // Process data in batches for CSV upload
   const processDataInBatches = useCallback(async (data, batchSize = 50) => {
