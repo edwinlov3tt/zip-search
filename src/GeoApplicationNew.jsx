@@ -8,6 +8,7 @@ import Header from './components/Header/Header';
 import SearchControls from './components/Search/SearchControls';
 import MapContainer from './components/Map/MapContainer';
 import MapLayerSelector from './components/Map/MapLayerSelector';
+import BoundaryManager from './components/Map/BoundaryManager';
 import ResultsDrawer from './components/Results/ResultsDrawer';
 import ToastNotification from './components/common/ToastNotification';
 import CustomExportModal from './components/Modals/CustomExportModal';
@@ -204,6 +205,9 @@ const GeoApplicationContent = () => {
 
       {/* Toast Notifications */}
       <ToastNotification />
+
+      {/* Boundary Manager - handles loading boundary data based on toggles */}
+      <BoundaryManager />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">

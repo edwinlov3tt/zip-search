@@ -155,7 +155,7 @@ const RadiusSearch = ({
           )}
 
           {showAutocomplete && autocompleteResults.length > 0 && (
-            <div className={`absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg shadow-lg border z-50 ${
+            <div className={`absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg shadow-lg border z-[9999] ${
               isDarkMode
                 ? 'bg-gray-700 border-gray-600'
                 : 'bg-white border-gray-200'

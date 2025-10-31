@@ -37,19 +37,15 @@ class GeocodingService {
       return [];
     }
 
-    console.log(`🔎 [SEARCH] Query: "${query}", Limit: ${limit}`);
-
     const cacheKey = this.getCacheKey(query, 'places');
     const cached = this.getFromCache(cacheKey);
 
     if (cached) {
-      console.log(`🔵 [CACHE HIT - Main] Query: "${query}" - Returning ${cached.length} cached results`);
       return cached;
     }
 
     try {
       // Try API first
-      console.log(`🌐 [TRYING API PROXY] Query: "${query}"`);
       const result = await apiClient.get('geocoding/places', {
         q: query,
         limit,
@@ -57,17 +53,15 @@ class GeocodingService {
       });
 
       if (result && Array.isArray(result)) {
-        console.log(`✅ [API PROXY SUCCESS] Query: "${query}" - Got ${result.length} results`);
         const formatted = result.map(item => this.formatApiResult(item));
         this.setCache(cacheKey, formatted);
         return formatted;
       }
     } catch (error) {
-      console.warn(`⚠️ [API PROXY FAILED] Falling back to direct Nominatim:`, error.message);
+      // Silent fallback to Nominatim
     }
 
     // Fallback to Nominatim directly
-    console.log(`🔄 [FALLBACK] Using direct Nominatim for query: "${query}"`);
     return await this.searchPlacesNominatim(query, limit);
   }
 
@@ -77,18 +71,15 @@ class GeocodingService {
     const cached = this.getFromCache(cacheKey);
 
     if (cached) {
-      console.log(`🔵 [CACHE HIT] Query: "${query}" - Returning ${cached.length} cached results`);
       return cached;
     }
-
-    console.log(`🟡 [CACHE MISS] Query: "${query}" - Making API request`);
 
     try {
       // Detect if query is numeric (likely ZIP code search)
       const isNumericQuery = /^\d+$/.test(query.trim());
 
       // Request more results to allow for better filtering
-      const requestLimit = isNumericQuery ? 20 : 12;
+      const requestLimit = isNumericQuery ? 20 : 15;
 
       const params = new URLSearchParams({
         q: query,
@@ -100,20 +91,14 @@ class GeocodingService {
         namedetails: '1'
       });
 
+      // For text queries, bias toward cities using featureType
+      // This helps prioritize "Dallas, TX" over "Dallas County"
+      if (!isNumericQuery) {
+        params.append('featureType', 'city');
+      }
+
       const url = `https://nominatim.openstreetmap.org/search?${params}`;
-      console.log(`🌐 [API CALL] URL: ${url}`);
-
       const results = await this.makeRateLimitedRequest(url);
-      console.log(`📥 [RAW API RESPONSE] Query: "${query}" - Received ${results.length} results from Nominatim`);
-
-      // Log first 5 raw results to see what Nominatim is actually returning
-      console.log('📋 [RAW RESULTS SAMPLE]', results.slice(0, 5).map(r => ({
-        name: r.name,
-        display_name: r.display_name,
-        type: r.type,
-        importance: r.importance,
-        address: r.address
-      })));
 
       let formatted = results.map(result => {
         const type = this.categorizeResult(result);
@@ -133,28 +118,11 @@ class GeocodingService {
         };
       });
 
-      console.log(`🏷️ [AFTER CATEGORIZATION] Query: "${query}" - ${formatted.length} results categorized`);
-      console.log('🏷️ [CATEGORIZED SAMPLE]', formatted.slice(0, 5).map(r => ({
-        name: r.name,
-        type: r.type,
-        importance: r.importance,
-        state: r.address?.state
-      })));
-
       // Apply smart filtering and sorting
-      const beforeSortCount = formatted.length;
       formatted = this.smartSortResults(formatted, query, isNumericQuery);
-      console.log(`🔀 [AFTER SMART SORT] Query: "${query}" - ${beforeSortCount} → ${formatted.length} results (${beforeSortCount - formatted.length} filtered out)`);
-      console.log('🔀 [SORTED SAMPLE]', formatted.slice(0, 5).map(r => ({
-        name: r.name,
-        type: r.type,
-        relevanceScore: r.relevanceScore,
-        state: r.address?.state
-      })));
 
       // Limit to requested amount after filtering
       formatted = formatted.slice(0, limit);
-      console.log(`✂️ [AFTER LIMIT] Query: "${query}" - Limited to ${formatted.length} results (limit: ${limit})`);
 
       this.setCache(cacheKey, formatted);
       return formatted;
@@ -169,26 +137,17 @@ class GeocodingService {
   smartSortResults(results, query, isNumericQuery) {
     const queryLower = query.toLowerCase().trim();
 
-    console.log(`🎯 [SMART SORT START] Query: "${query}", isNumeric: ${isNumericQuery}, Input: ${results.length} results`);
-
     // Filter out counties when better options exist if query is not explicitly for a county
     const filtered = results.filter(result => {
       if (result.type === 'county' && !queryLower.includes('county')) {
-        const keep = result.importance > 0.6;
-        if (!keep) {
-          console.log(`🚫 [FILTERED OUT] County with low importance: ${result.name} (importance: ${result.importance})`);
-        }
-        return keep;
+        return result.importance > 0.6;
       }
       return true;
     });
 
-    console.log(`🔍 [AFTER COUNTY FILTER] ${results.length} → ${filtered.length} results`);
-
     // Calculate relevance score
     const scored = filtered.map(result => {
       let relevanceScore = result.importance;
-      const originalScore = relevanceScore;
 
       // For numeric queries, heavily prioritize ZIP codes
       if (isNumericQuery) {
@@ -222,33 +181,20 @@ class GeocodingService {
 
         // Boost exact name matches
         const nameLower = (result.name || '').toLowerCase();
-        let nameBoost = 0;
         if (nameLower === queryLower) {
-          nameBoost = 5;
           relevanceScore += 5;
         } else if (nameLower.startsWith(queryLower)) {
-          nameBoost = 3;
           relevanceScore += 3;
         } else if (nameLower.includes(queryLower)) {
-          nameBoost = 1;
           relevanceScore += 1;
         }
-
-        console.log(`📊 [SCORING] "${result.name}" (${result.type}, ${result.address?.state || 'no state'}) - Base: ${originalScore.toFixed(3)}, TypeBoost: ${typeBoost}x, NameBoost: +${nameBoost}, Final: ${relevanceScore.toFixed(3)}`);
       }
 
       return { ...result, relevanceScore };
     });
 
     // Sort by relevance score
-    const sorted = scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-    console.log(`🏆 [TOP 10 AFTER SORT]`);
-    sorted.slice(0, 10).forEach((r, i) => {
-      console.log(`  ${i + 1}. ${r.name} (${r.type}, ${r.address?.state || 'no state'}) - Score: ${r.relevanceScore.toFixed(3)}`);
-    });
-
-    return sorted;
+    return scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
   }
 
   // Rate limited request for Nominatim
@@ -374,30 +320,43 @@ class GeocodingService {
     const type = result.type;
     const osm_type = result.osm_type;
     const address = result.address || {};
+    const resultClass = result.class;
 
-    // ZIP code
-    if (address.postcode || /^\d{5}(-\d{4})?$/.test(result.name)) {
-      return 'zipcode';
-    }
-
-    // State
-    if (type === 'administrative' && address.state && !address.city && !address.county) {
-      return 'state';
-    }
-
-    // County
-    if (type === 'administrative' && (address.county || result.display_name?.includes('County'))) {
-      return 'county';
-    }
-
-    // City/Town
-    if (['city', 'town', 'village', 'hamlet'].includes(type) ||
-        address.city || address.town || address.village) {
+    // City/Town/Village - Check by type OR by address components
+    // Cities can have type='city' OR type='administrative' with city/town in address
+    if (['city', 'town', 'village', 'hamlet'].includes(type)) {
       return 'city';
     }
 
+    // Administrative places that are actually cities (not counties or states)
+    if (type === 'administrative' && (address.city || address.town || address.village)) {
+      return 'city';
+    }
+
+    // State - administrative with state but no city/town/county
+    if (type === 'administrative' && address.state && !address.city && !address.town && !address.county) {
+      return 'state';
+    }
+
+    // County - ONLY if it's actually a county boundary, not just has a county in address
+    // Check: name explicitly says County OR it's a boundary with county but no city
+    if (type === 'administrative' && !address.city && !address.town) {
+      if (result.display_name?.includes('County') ||
+          (result.name && result.name.includes('County')) ||
+          (resultClass === 'boundary' && address.county)) {
+        return 'county';
+      }
+    }
+
+    // ZIP code - Check if name is numeric OR has postcode (restoring original logic)
+    if (/^\d{5}(-\d{4})?$/.test(result.name) ||
+        address.postcode ||
+        (resultClass === 'place' && type === 'postcode')) {
+      return 'zipcode';
+    }
+
     // Address/Business
-    if (address.house_number || type === 'house' || osm_type === 'node') {
+    if (address.house_number || type === 'house') {
       return 'address';
     }
 
@@ -411,16 +370,25 @@ class GeocodingService {
 
     switch (type) {
       case 'zipcode':
-        return `${address.postcode || name} - ${address.city || address.town}, ${address.state}`;
+        if (address.state) {
+          return `${address.postcode || name} - ${address.city || address.town || 'Unknown'}, ${address.state}`;
+        }
+        return address.postcode || name || 'Unknown Location';
 
       case 'city':
-        return `${address.city || address.town || name}, ${address.state}`;
+        if (address.state) {
+          return `${address.city || address.town || name}, ${address.state}`;
+        }
+        return address.city || address.town || name || 'Unknown City';
 
       case 'county':
-        return `${address.county || name}, ${address.state}`;
+        if (address.state) {
+          return `${address.county || name}, ${address.state}`;
+        }
+        return `${address.county || name} County` || 'Unknown County';
 
       case 'state':
-        return `${address.state || name}`;
+        return address.state || name || 'Unknown State';
 
       case 'address':
         const parts = [];
@@ -428,12 +396,15 @@ class GeocodingService {
         if (address.road) parts.push(address.road);
         if (address.city || address.town) parts.push(address.city || address.town);
         if (address.state) parts.push(address.state);
-        return parts.join(', ');
+        return parts.length > 0 ? parts.join(', ') : (name || 'Unknown Address');
 
       default:
         // Simplify long display names
-        const displayParts = displayName.split(', ');
-        return displayParts.slice(0, 3).join(', ');
+        if (displayName) {
+          const displayParts = displayName.split(', ');
+          return displayParts.slice(0, 3).join(', ');
+        }
+        return name || 'Unknown Location';
     }
   }
 

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Boundary Debug Helper</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .test { margin: 20px 0; padding: 15px; background: #2d2d2d; border-radius: 5px; }
+        button { padding: 10px 20px; margin: 5px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a9e; }
+        pre { background: #1e1e1e; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+    </style>
+</head>
+<body>
+    <h1>Boundary System Debug</h1>
+    <p>Open this page with your app running, then open browser console and check these steps:</p>
+
+    <div class="test">
+        <h2>Step 1: Test ZIP Boundary Service</h2>
+        <button onclick="testZipService()">Test ZIP Service</button>
+        <pre id="zip-result">Click button to test...</pre>
+    </div>
+
+    <div class="test">
+        <h2>Step 2: Test State Boundary Service</h2>
+        <button onclick="testStateService()">Test State Service</button>
+        <pre id="state-result">Click button to test...</pre>
+    </div>
+
+    <div class="test">
+        <h2>Step 3: Check React State</h2>
+        <p>In your browser console, run:</p>
+        <pre>// Check if data is in React state
+window.$0 // Click on MapContainer element first, then run this</pre>
+    </div>
+
+    <div class="test">
+        <h2>Step 4: Manual Test</h2>
+        <p>Instructions:</p>
+        <ol>
+            <li>Do a ZIP search (e.g., search for "10001")</li>
+            <li>Open Map Settings</li>
+            <li>Toggle ZIP Boundaries ON</li>
+            <li>Check console for <code>[ZIP Boundaries]</code> logs</li>
+            <li>Check console for API calls to tigerweb.geo.census.gov</li>
+        </ol>
+    </div>
+
+    <script>
+        async function testZipService() {
+            const result = document.getElementById('zip-result');
+            result.textContent = 'Testing...';
+
+            try {
+                // Test the exact same call our service makes
+                const params = new URLSearchParams({
+                    where: "ZCTA5 IN ('10001','10002')",
+                    outFields: 'ZCTA5,GEOID,NAME,AREALAND,AREAWATER,CENTLAT,CENTLON',
+                    returnGeometry: 'true',
+                    f: 'geojson',
+                    geometryPrecision: '4'
+                });
+
+                const url = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/2/query?${params}`;
+
+                console.log('[Test] Calling TIGER API:', url);
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.features && data.features.length > 0) {
+                    result.innerHTML = `<span class="success">✓ SUCCESS!</span>\n` +
+                        `Found ${data.features.length} ZIP boundaries\n` +
+                        `First ZIP: ${data.features[0].properties.ZCTA5}\n` +
+                        `Has geometry: ${data.features[0].geometry ? 'YES' : 'NO'}\n` +
+                        `Geometry type: ${data.features[0].geometry?.type}\n` +
+                        `Coordinate count: ${data.features[0].geometry?.coordinates?.[0]?.length || 0}\n\n` +
+                        JSON.stringify(data.features[0].properties, null, 2);
+                } else {
+                    result.innerHTML = `<span class="error">✗ NO FEATURES</span>\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                result.innerHTML = `<span class="error">✗ ERROR</span>\n${error.message}\n${error.stack}`;
+            }
+        }
+
+        async function testStateService() {
+            const result = document.getElementById('state-result');
+            result.textContent = 'Testing...';
+
+            try {
+                const params = new URLSearchParams({
+                    where: "STUSAB='NY'",
+                    outFields: 'STATE,STUSAB,NAME,GEOID,AREALAND,CENTLAT,CENTLON',
+                    returnGeometry: 'true',
+                    f: 'geojson',
+                    geometryPrecision: '3'
+                });
+
+                const url = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/0/query?${params}`;
+
+                console.log('[Test] Calling TIGER API:', url);
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.features && data.features.length > 0) {
+                    result.innerHTML = `<span class="success">✓ SUCCESS!</span>\n` +
+                        `Found ${data.features.length} state boundary\n` +
+                        `State: ${data.features[0].properties.NAME}\n` +
+                        `Has geometry: ${data.features[0].geometry ? 'YES' : 'NO'}\n\n` +
+                        JSON.stringify(data.features[0].properties, null, 2);
+                } else {
+                    result.innerHTML = `<span class="error">✗ NO FEATURES</span>\n${JSON.stringify(data, null, 2)}`;
+                }
+            } catch (error) {
+                result.innerHTML = `<span class="error">✗ ERROR</span>\n${error.message}`;
+            }
+        }
+
+        console.log('%c[Boundary Debug] Helper loaded. Use buttons above to test TIGER API.', 'color: #4ec9b0; font-weight: bold');
+    </script>
+</body>
+</html>
