@@ -157,62 +157,83 @@ const BoundarySettings = () => {
                 />
               </label>
 
-              {/* State Boundaries - COMING SOON */}
-              {/* TODO: Remove "Coming Soon" tooltip and enable when State Boundaries are ready */}
-              <label
-                className={`flex items-center justify-between text-xs p-2 rounded opacity-40 cursor-not-allowed ${
-                  isDarkMode ? 'bg-gray-700/30' : 'bg-gray-100/30'
-                }`}
-                title="Coming Soon"
-              >
+              {/* State Boundaries - NOW WORKING */}
+              <label className={`flex items-center justify-between text-xs cursor-pointer p-2 rounded transition-colors ${
+                isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+              }`}>
                 <span className="flex items-center space-x-1">
                   <span>State Boundaries</span>
+                  {loadingStateBoundaries && <span className="inline-block animate-spin">⟳</span>}
                 </span>
                 <input
                   type="checkbox"
-                  checked={false}
-                  disabled
-                  className="rounded cursor-not-allowed"
+                  checked={showStateBoundaries}
+                  onChange={(e) => {
+                    setShowStateBoundaries(e.target.checked);
+                    if (!e.target.checked) setStateBoundariesData(null);
+                  }}
+                  disabled={loadingStateBoundaries}
+                  className="rounded"
                 />
               </label>
 
-              {/* City Boundaries - COMING SOON */}
-              {/* TODO: Remove "Coming Soon" tooltip and enable when City Boundaries are ready */}
-              <label
-                className={`flex items-center justify-between text-xs p-2 rounded opacity-40 cursor-not-allowed ${
-                  isDarkMode ? 'bg-gray-700/30' : 'bg-gray-100/30'
-                }`}
-                title="Coming Soon"
-              >
+              {/* City Boundaries - NOW WORKING */}
+              <label className={`flex items-center justify-between text-xs cursor-pointer p-2 rounded transition-colors ${
+                isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+              }`}>
                 <span className="flex items-center space-x-1">
                   <span>City Boundaries</span>
+                  {loadingCityBoundaries && <span className="inline-block animate-spin">⟳</span>}
                 </span>
                 <input
                   type="checkbox"
-                  checked={false}
-                  disabled
-                  className="rounded cursor-not-allowed"
+                  checked={showCityBoundaries}
+                  onChange={(e) => {
+                    setShowCityBoundaries(e.target.checked);
+                    if (!e.target.checked) setCityBoundariesData(null);
+                  }}
+                  disabled={loadingCityBoundaries}
+                  className="rounded"
                 />
               </label>
 
-              {/* ZIP Boundaries - COMING SOON */}
-              {/* TODO: Remove "Coming Soon" tooltip and enable when ZIP Boundaries are ready */}
-              <label
-                className={`flex items-center justify-between text-xs p-2 rounded opacity-40 cursor-not-allowed ${
-                  isDarkMode ? 'bg-gray-700/30' : 'bg-gray-100/30'
-                }`}
-                title="Coming Soon"
-              >
+              {/* ZIP Boundaries - NOW WORKING */}
+              <label className={`flex items-center justify-between text-xs cursor-pointer p-2 rounded transition-colors ${
+                isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+              }`}>
                 <span className="flex items-center space-x-1">
                   <span>ZIP Boundaries</span>
+                  {loadingZipBoundaries && <span className="inline-block animate-spin">⟳</span>}
+                  {zipBoundariesData && zipBoundariesData.features && (
+                    <span className="text-[10px] opacity-70">
+                      ({zipBoundariesData.features.length})
+                    </span>
+                  )}
                 </span>
                 <input
                   type="checkbox"
-                  checked={false}
-                  disabled
-                  className="rounded cursor-not-allowed"
+                  checked={showZipBoundaries}
+                  onChange={(e) => {
+                    setShowZipBoundaries(e.target.checked);
+                    if (!e.target.checked) setZipBoundariesData(null);
+                  }}
+                  disabled={loadingZipBoundaries}
+                  className="rounded"
                 />
               </label>
+
+              {/* Clear ZIP boundaries cache button */}
+              {showZipBoundaries && zipBoundariesData && zipBoundariesData.features && zipBoundariesData.features.length > 0 && (
+                <button
+                  onClick={handleClearZipBoundaries}
+                  className={`w-full text-[10px] px-2 py-1 rounded ${
+                    isDarkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-200 hover:bg-gray-300'
+                  }`}
+                  title="Clear all cached ZIP boundaries (memory + localStorage)"
+                >
+                  Clear ZIP Cache {cacheStats && `(${cacheStats.totalZips} cached)`}
+                </button>
+              )}
             </div>
           </div>
             </div>
