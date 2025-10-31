@@ -177,67 +177,32 @@ export const MapProvider = ({ children }) => {
     }
   }, [showCountyBorders, countyBoundaries, loadCountyBoundaries]);
 
-  // Load ZIP boundaries for viewport
-  const loadZipBoundariesForViewport = useCallback(async () => {
-    if (!currentViewport || !showZipBoundaries) return;
+  // Note: ZIP boundary loading now happens in GeoApplication based on search results
+  // This provides better performance and only loads boundaries for relevant ZIPs
 
-    setLoadingZipBoundaries(true);
-    try {
-      // For now, just use cached boundaries or create empty collection
-      const cachedBoundaries = zipBoundariesService.getAllCachedBoundaries();
-      if (cachedBoundaries && cachedBoundaries.features.length > 0) {
-        console.log(`Loaded ${cachedBoundaries.features.length} cached ZIP boundaries`);
-        setZipBoundariesData(cachedBoundaries);
-      } else {
-        // Create empty feature collection for now
-        setZipBoundariesData({
-          type: 'FeatureCollection',
-          features: []
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load ZIP boundaries:', error);
-    } finally {
-      setLoadingZipBoundaries(false);
-    }
-  }, [currentViewport, showZipBoundaries]);
-
-  // Effect to load ZIP boundaries when toggled or viewport changes
+  // Effect to clear ZIP boundaries when toggled off
   useEffect(() => {
-    if (showZipBoundaries) {
-      loadZipBoundariesForViewport();
-    } else {
+    if (!showZipBoundaries) {
       setZipBoundariesData(null);
     }
-  }, [showZipBoundaries, currentViewport, loadZipBoundariesForViewport]);
+    // Note: Loading happens in GeoApplication based on search results
+  }, [showZipBoundaries]);
 
-  // Simple state boundary loading (mock for now)
-  const loadStateBoundaries = useCallback(async () => {
-    if (!showStateBoundaries) return;
-
-    setLoadingStateBoundaries(true);
-    try {
-      // For now, create empty collection - would normally fetch from API
-      console.log('State boundaries loading disabled (no RPC function)');
-      setStateBoundariesData({
-        type: 'FeatureCollection',
-        features: []
-      });
-    } catch (error) {
-      console.error('Failed to load state boundaries:', error);
-    } finally {
-      setLoadingStateBoundaries(false);
-    }
-  }, [showStateBoundaries]);
-
-  // Effect to load state boundaries when toggled
+  // Effect to clear state boundaries when toggled off
   useEffect(() => {
-    if (showStateBoundaries) {
-      loadStateBoundaries();
-    } else {
+    if (!showStateBoundaries) {
       setStateBoundariesData(null);
     }
-  }, [showStateBoundaries, loadStateBoundaries]);
+    // Note: Loading happens in GeoApplication based on search results
+  }, [showStateBoundaries]);
+
+  // Effect to clear city boundaries when toggled off
+  useEffect(() => {
+    if (!showCityBoundaries) {
+      setCityBoundariesData(null);
+    }
+    // Note: Loading happens in GeoApplication based on search results
+  }, [showCityBoundaries]);
 
   const value = {
     // Map state
