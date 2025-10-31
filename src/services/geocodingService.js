@@ -75,10 +75,16 @@ class GeocodingService {
     }
 
     try {
+      // Detect if query is numeric (likely ZIP code search)
+      const isNumericQuery = /^\d+$/.test(query.trim());
+
+      // Request more results to allow for better filtering
+      const requestLimit = isNumericQuery ? 20 : 12;
+
       const params = new URLSearchParams({
         q: query,
         format: 'json',
-        limit: limit.toString(),
+        limit: requestLimit.toString(),
         countrycodes: 'us',
         addressdetails: '1',
         extratags: '1',
@@ -88,17 +94,29 @@ class GeocodingService {
       const url = `https://nominatim.openstreetmap.org/search?${params}`;
       const results = await this.makeRateLimitedRequest(url);
 
-      const formatted = results.map(result => ({
-        id: result.place_id,
-        displayName: result.display_name,
-        name: result.name,
-        type: this.categorizeResult(result),
-        lat: parseFloat(result.lat),
-        lng: parseFloat(result.lon),
-        address: result.address || {},
-        importance: result.importance || 0,
-        raw: result
-      })).sort((a, b) => b.importance - a.importance);
+      let formatted = results.map(result => {
+        const type = this.categorizeResult(result);
+        const postcode = result.address?.postcode || '';
+
+        return {
+          id: result.place_id,
+          displayName: result.display_name,
+          name: result.name,
+          type: type,
+          lat: parseFloat(result.lat),
+          lng: parseFloat(result.lon),
+          address: result.address || {},
+          importance: result.importance || 0,
+          postcode: postcode,
+          raw: result
+        };
+      });
+
+      // Apply smart filtering and sorting
+      formatted = this.smartSortResults(formatted, query, isNumericQuery);
+
+      // Limit to requested amount after filtering
+      formatted = formatted.slice(0, limit);
 
       this.setCache(cacheKey, formatted);
       return formatted;
@@ -107,6 +125,69 @@ class GeocodingService {
       console.error('Nominatim search failed:', error);
       return [];
     }
+  }
+
+  // Smart sorting that prioritizes relevant results
+  smartSortResults(results, query, isNumericQuery) {
+    const queryLower = query.toLowerCase().trim();
+
+    return results
+      // Filter out counties when better options exist if query is not explicitly for a county
+      .filter(result => {
+        if (result.type === 'county' && !queryLower.includes('county')) {
+          // Keep county only if it's highly relevant
+          return result.importance > 0.6;
+        }
+        return true;
+      })
+      // Calculate relevance score
+      .map(result => {
+        let relevanceScore = result.importance;
+
+        // For numeric queries, heavily prioritize ZIP codes
+        if (isNumericQuery) {
+          if (result.type === 'zipcode' || result.postcode) {
+            const postcode = result.postcode || result.name;
+            // Exact match or prefix match
+            if (postcode.startsWith(query)) {
+              relevanceScore += 10; // Huge boost for ZIP prefix match
+            } else if (postcode.includes(query)) {
+              relevanceScore += 5;
+            } else {
+              relevanceScore += 2; // Still boost ZIPs for numeric queries
+            }
+          } else {
+            // Penalize non-ZIP results for numeric queries
+            relevanceScore *= 0.3;
+          }
+        } else {
+          // For text queries, prioritize by type
+          const typeBoosts = {
+            'city': 3,
+            'zipcode': 2.5,
+            'town': 2.5,
+            'village': 2,
+            'state': 1.5,
+            'county': 0.5, // Heavily deprioritize counties
+            'address': 1
+          };
+          relevanceScore *= (typeBoosts[result.type] || 1);
+
+          // Boost exact name matches
+          const nameLower = (result.name || '').toLowerCase();
+          if (nameLower === queryLower) {
+            relevanceScore += 5;
+          } else if (nameLower.startsWith(queryLower)) {
+            relevanceScore += 3;
+          } else if (nameLower.includes(queryLower)) {
+            relevanceScore += 1;
+          }
+        }
+
+        return { ...result, relevanceScore };
+      })
+      // Sort by relevance score
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
   }
 
   // Rate limited request for Nominatim
