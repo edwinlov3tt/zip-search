@@ -37,15 +37,19 @@ class GeocodingService {
       return [];
     }
 
+    console.log(`🔎 [SEARCH] Query: "${query}", Limit: ${limit}`);
+
     const cacheKey = this.getCacheKey(query, 'places');
     const cached = this.getFromCache(cacheKey);
 
     if (cached) {
+      console.log(`🔵 [CACHE HIT - Main] Query: "${query}" - Returning ${cached.length} cached results`);
       return cached;
     }
 
     try {
       // Try API first
+      console.log(`🌐 [TRYING API PROXY] Query: "${query}"`);
       const result = await apiClient.get('geocoding/places', {
         q: query,
         limit,
@@ -53,15 +57,17 @@ class GeocodingService {
       });
 
       if (result && Array.isArray(result)) {
+        console.log(`✅ [API PROXY SUCCESS] Query: "${query}" - Got ${result.length} results`);
         const formatted = result.map(item => this.formatApiResult(item));
         this.setCache(cacheKey, formatted);
         return formatted;
       }
     } catch (error) {
-      console.warn('API geocoding failed, trying fallback:', error);
+      console.warn(`⚠️ [API PROXY FAILED] Falling back to direct Nominatim:`, error.message);
     }
 
     // Fallback to Nominatim directly
+    console.log(`🔄 [FALLBACK] Using direct Nominatim for query: "${query}"`);
     return await this.searchPlacesNominatim(query, limit);
   }
 
@@ -71,8 +77,11 @@ class GeocodingService {
     const cached = this.getFromCache(cacheKey);
 
     if (cached) {
+      console.log(`🔵 [CACHE HIT] Query: "${query}" - Returning ${cached.length} cached results`);
       return cached;
     }
+
+    console.log(`🟡 [CACHE MISS] Query: "${query}" - Making API request`);
 
     try {
       // Detect if query is numeric (likely ZIP code search)
@@ -92,7 +101,19 @@ class GeocodingService {
       });
 
       const url = `https://nominatim.openstreetmap.org/search?${params}`;
+      console.log(`🌐 [API CALL] URL: ${url}`);
+
       const results = await this.makeRateLimitedRequest(url);
+      console.log(`📥 [RAW API RESPONSE] Query: "${query}" - Received ${results.length} results from Nominatim`);
+
+      // Log first 5 raw results to see what Nominatim is actually returning
+      console.log('📋 [RAW RESULTS SAMPLE]', results.slice(0, 5).map(r => ({
+        name: r.name,
+        display_name: r.display_name,
+        type: r.type,
+        importance: r.importance,
+        address: r.address
+      })));
 
       let formatted = results.map(result => {
         const type = this.categorizeResult(result);
@@ -112,11 +133,28 @@ class GeocodingService {
         };
       });
 
+      console.log(`🏷️ [AFTER CATEGORIZATION] Query: "${query}" - ${formatted.length} results categorized`);
+      console.log('🏷️ [CATEGORIZED SAMPLE]', formatted.slice(0, 5).map(r => ({
+        name: r.name,
+        type: r.type,
+        importance: r.importance,
+        state: r.address?.state
+      })));
+
       // Apply smart filtering and sorting
+      const beforeSortCount = formatted.length;
       formatted = this.smartSortResults(formatted, query, isNumericQuery);
+      console.log(`🔀 [AFTER SMART SORT] Query: "${query}" - ${beforeSortCount} → ${formatted.length} results (${beforeSortCount - formatted.length} filtered out)`);
+      console.log('🔀 [SORTED SAMPLE]', formatted.slice(0, 5).map(r => ({
+        name: r.name,
+        type: r.type,
+        relevanceScore: r.relevanceScore,
+        state: r.address?.state
+      })));
 
       // Limit to requested amount after filtering
       formatted = formatted.slice(0, limit);
+      console.log(`✂️ [AFTER LIMIT] Query: "${query}" - Limited to ${formatted.length} results (limit: ${limit})`);
 
       this.setCache(cacheKey, formatted);
       return formatted;
@@ -131,63 +169,86 @@ class GeocodingService {
   smartSortResults(results, query, isNumericQuery) {
     const queryLower = query.toLowerCase().trim();
 
-    return results
-      // Filter out counties when better options exist if query is not explicitly for a county
-      .filter(result => {
-        if (result.type === 'county' && !queryLower.includes('county')) {
-          // Keep county only if it's highly relevant
-          return result.importance > 0.6;
-        }
-        return true;
-      })
-      // Calculate relevance score
-      .map(result => {
-        let relevanceScore = result.importance;
+    console.log(`🎯 [SMART SORT START] Query: "${query}", isNumeric: ${isNumericQuery}, Input: ${results.length} results`);
 
-        // For numeric queries, heavily prioritize ZIP codes
-        if (isNumericQuery) {
-          if (result.type === 'zipcode' || result.postcode) {
-            const postcode = result.postcode || result.name;
-            // Exact match or prefix match
-            if (postcode.startsWith(query)) {
-              relevanceScore += 10; // Huge boost for ZIP prefix match
-            } else if (postcode.includes(query)) {
-              relevanceScore += 5;
-            } else {
-              relevanceScore += 2; // Still boost ZIPs for numeric queries
-            }
+    // Filter out counties when better options exist if query is not explicitly for a county
+    const filtered = results.filter(result => {
+      if (result.type === 'county' && !queryLower.includes('county')) {
+        const keep = result.importance > 0.6;
+        if (!keep) {
+          console.log(`🚫 [FILTERED OUT] County with low importance: ${result.name} (importance: ${result.importance})`);
+        }
+        return keep;
+      }
+      return true;
+    });
+
+    console.log(`🔍 [AFTER COUNTY FILTER] ${results.length} → ${filtered.length} results`);
+
+    // Calculate relevance score
+    const scored = filtered.map(result => {
+      let relevanceScore = result.importance;
+      const originalScore = relevanceScore;
+
+      // For numeric queries, heavily prioritize ZIP codes
+      if (isNumericQuery) {
+        if (result.type === 'zipcode' || result.postcode) {
+          const postcode = result.postcode || result.name;
+          // Exact match or prefix match
+          if (postcode.startsWith(query)) {
+            relevanceScore += 10; // Huge boost for ZIP prefix match
+          } else if (postcode.includes(query)) {
+            relevanceScore += 5;
           } else {
-            // Penalize non-ZIP results for numeric queries
-            relevanceScore *= 0.3;
+            relevanceScore += 2; // Still boost ZIPs for numeric queries
           }
         } else {
-          // For text queries, prioritize by type
-          const typeBoosts = {
-            'city': 3,
-            'zipcode': 2.5,
-            'town': 2.5,
-            'village': 2,
-            'state': 1.5,
-            'county': 0.5, // Heavily deprioritize counties
-            'address': 1
-          };
-          relevanceScore *= (typeBoosts[result.type] || 1);
+          // Penalize non-ZIP results for numeric queries
+          relevanceScore *= 0.3;
+        }
+      } else {
+        // For text queries, prioritize by type
+        const typeBoosts = {
+          'city': 3,
+          'zipcode': 2.5,
+          'town': 2.5,
+          'village': 2,
+          'state': 1.5,
+          'county': 0.5, // Heavily deprioritize counties
+          'address': 1
+        };
+        const typeBoost = typeBoosts[result.type] || 1;
+        relevanceScore *= typeBoost;
 
-          // Boost exact name matches
-          const nameLower = (result.name || '').toLowerCase();
-          if (nameLower === queryLower) {
-            relevanceScore += 5;
-          } else if (nameLower.startsWith(queryLower)) {
-            relevanceScore += 3;
-          } else if (nameLower.includes(queryLower)) {
-            relevanceScore += 1;
-          }
+        // Boost exact name matches
+        const nameLower = (result.name || '').toLowerCase();
+        let nameBoost = 0;
+        if (nameLower === queryLower) {
+          nameBoost = 5;
+          relevanceScore += 5;
+        } else if (nameLower.startsWith(queryLower)) {
+          nameBoost = 3;
+          relevanceScore += 3;
+        } else if (nameLower.includes(queryLower)) {
+          nameBoost = 1;
+          relevanceScore += 1;
         }
 
-        return { ...result, relevanceScore };
-      })
-      // Sort by relevance score
-      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+        console.log(`📊 [SCORING] "${result.name}" (${result.type}, ${result.address?.state || 'no state'}) - Base: ${originalScore.toFixed(3)}, TypeBoost: ${typeBoost}x, NameBoost: +${nameBoost}, Final: ${relevanceScore.toFixed(3)}`);
+      }
+
+      return { ...result, relevanceScore };
+    });
+
+    // Sort by relevance score
+    const sorted = scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    console.log(`🏆 [TOP 10 AFTER SORT]`);
+    sorted.slice(0, 10).forEach((r, i) => {
+      console.log(`  ${i + 1}. ${r.name} (${r.type}, ${r.address?.state || 'no state'}) - Score: ${r.relevanceScore.toFixed(3)}`);
+    });
+
+    return sorted;
   }
 
   // Rate limited request for Nominatim
