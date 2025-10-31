@@ -954,7 +954,11 @@ export const SearchProvider = ({ children }) => {
     return { entry: searchEntry };
   }, [polygonSearches]);
 
+  // Polygon Search mode function (searches for ZIP codes/cities/counties within polygons)
+  // NOTE: This function handles the POLYGON SEARCH MODE (not Address Search with polygons)
+  // For Address Search polygon functionality, see performSingleShapeSearchAddress
   const performSingleShapeSearch = useCallback(async (shape, appendResults = false) => {
+    console.log('🔵 [POLYGON SEARCH MODE] performSingleShapeSearch called', { shape, appendResults });
     setIsLoading(true);
 
     // Always mark as performed and show drawer
@@ -2787,10 +2791,17 @@ export const SearchProvider = ({ children }) => {
   }, [addressSearches, searchResultsById, rebuildDisplayedResults]);
 
   // Address polygon search functions
+  // NOTE: This function handles polygon drawing in ADDRESS SEARCH mode
+  // It is separate from the regular Polygon Search mode (performSingleShapeSearch)
   const performSingleShapeSearchAddress = useCallback(async (shape, appendResults = false) => {
+    console.log('🟣 [ADDRESS SEARCH - Polygon] performSingleShapeSearchAddress called', { shape, appendResults });
     setIsLoading(true);
+
+    // Always mark search as performed and show drawer
+    setSearchPerformed(true);
+    setDrawerState('half');
+
     if (!appendResults) {
-      setSearchPerformed(true);
       setApiError(null);
     }
 
@@ -2848,10 +2859,8 @@ export const SearchProvider = ({ children }) => {
       // Auto-switch to streets tab
       setActiveTab('streets');
 
-      // Show drawer when search completes
-      setDrawerState('half');
-
       setApiError(null);
+      console.log('✅ [ADDRESS SEARCH - Polygon] Search completed successfully', { resultCount: results.length });
     } catch (error) {
       setApiError(error.message || 'Failed to search addresses');
     } finally {

@@ -138,16 +138,21 @@ const GeoApplicationContent = () => {
   }, [setMapClickCallback, handleMapClickSearch]);
 
   // Wire up polygon search callbacks
+  // IMPORTANT: There are TWO separate polygon features:
+  // 1. POLYGON SEARCH MODE - Searches for ZIP codes/cities/counties within drawn polygons
+  // 2. ADDRESS SEARCH POLYGON - Searches for street addresses within drawn polygons (via Overpass API)
   useEffect(() => {
-    const isPolygonMode = searchMode === 'polygon';
-    const isAddressPolygonMode = searchMode === 'address' && addressSubMode === 'polygon';
+    const isPolygonMode = searchMode === 'polygon';  // Regular Polygon Search mode
+    const isAddressPolygonMode = searchMode === 'address' && addressSubMode === 'polygon';  // Address Search with polygon tool
 
     if ((isPolygonMode || isAddressPolygonMode) && setOnShapeCreatedCallback && setOnShapeDeletedCallback) {
       // Set callback for when shapes are created
       setOnShapeCreatedCallback(() => (shape) => {
         if (isAddressPolygonMode && performSingleShapeSearchAddress) {
+          // ADDRESS SEARCH - Polygon tool: Search for street addresses via Overpass API
           performSingleShapeSearchAddress(shape, true); // appendResults = true for address polygon searches
         } else if (isPolygonMode) {
+          // POLYGON SEARCH MODE: Search for ZIP codes/cities/counties
           performSingleShapeSearch(shape, true); // appendResults = true for polygon searches
         }
       });
@@ -156,8 +161,10 @@ const GeoApplicationContent = () => {
       setOnShapeDeletedCallback(() => (deletedShapes) => {
         deletedShapes.forEach(shape => {
           if (isAddressPolygonMode && removeAddressSearchByShapeId) {
+            // Remove Address Search polygon result
             removeAddressSearchByShapeId(shape.id);
           } else if (isPolygonMode) {
+            // Remove Polygon Search mode result
             removePolygonSearchByShapeId(shape.id);
           }
         });
