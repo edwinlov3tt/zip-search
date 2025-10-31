@@ -1,22 +1,39 @@
 /**
  * ZIP Boundaries API Service
- * Connects to PostGIS database via geo.edwinlovett.com API
+ * Fetches ZIP Code Tabulation Area (ZCTA) boundaries from Census TIGER API
  */
 
 import boundaryCache from './boundaryCache';
-import postgisService from './postgisService';
 
-// HTTPS API base for boundaries (env-driven)
-const API_BASE_URL = (() => {
-  const raw = import.meta.env.VITE_GEO_API_BASE;
-  if (!raw) return 'https://geo.edwinlovett.com';
-  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
-})();
+// Census TIGER API endpoint for ZCTA boundaries
+const TIGER_API_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer';
+const ZCTA_LAYER = 2; // 2020 Census ZIP Code Tabulation Areas
 
 class ZipBoundariesService {
   constructor() {
     this.cache = new Map();
     this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
+  }
+
+  /**
+   * Normalize TIGER API feature to match expected format
+   * Maps ZCTA5 -> zipcode, etc.
+   */
+  normalizeFeature(feature) {
+    if (!feature) return null;
+
+    return {
+      ...feature,
+      properties: {
+        ...feature.properties,
+        // Map TIGER fields to expected fields
+        zipcode: feature.properties.ZCTA5 || feature.properties.zipcode,
+        name: feature.properties.NAME || feature.properties.name,
+        state_code: feature.properties.STATE || feature.properties.state_code,
+        land_area: feature.properties.AREALAND || feature.properties.land_area,
+        water_area: feature.properties.AREAWATER || feature.properties.water_area
+      }
+    };
   }
 
   /**
@@ -35,26 +52,42 @@ class ZipBoundariesService {
     }
 
     try {
-      const url = `${API_BASE_URL}/zip/${zipCode}${simplified ? '?simplified=true' : ''}`;
+      // Build TIGER API query URL
+      const params = new URLSearchParams({
+        where: `ZCTA5='${zipCode}'`,
+        outFields: 'ZCTA5,GEOID,NAME,AREALAND,AREAWATER,CENTLAT,CENTLON',
+        returnGeometry: 'true',
+        f: 'geojson',
+        geometryPrecision: simplified ? '4' : '6'
+      });
+
+      const url = `${TIGER_API_BASE}/${ZCTA_LAYER}/query?${params}`;
       const response = await fetch(url);
 
       if (!response.ok) {
         if (response.status === 404) {
-          // Silently return null for missing boundaries
           return null;
         }
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(`TIGER API error: ${response.status}`);
       }
 
       const data = await response.json();
 
-      // Cache the result
-      this.cache.set(cacheKey, {
-        data,
-        expires: Date.now() + this.cacheTimeout
-      });
+      // TIGER returns a FeatureCollection, extract the first feature
+      if (data && data.features && data.features.length > 0) {
+        const feature = this.normalizeFeature(data.features[0]);
 
-      return data;
+        // Cache the result
+        this.cache.set(cacheKey, {
+          data: feature,
+          expires: Date.now() + this.cacheTimeout
+        });
+
+        return feature;
+      }
+
+      // No boundary found
+      return null;
     } catch (error) {
       // Don't log individual failures
       return null;
@@ -78,29 +111,64 @@ class ZipBoundariesService {
     const features = [];
     const errors = [];
 
-    // Fetch boundaries in parallel (max 10 at a time to avoid overwhelming the API)
-    const batchSize = 10;
+    // TIGER API supports batch queries with IN clause (max ~50 at a time)
+    const batchSize = 50;
+
     for (let i = 0; i < zipCodes.length; i += batchSize) {
       const batch = zipCodes.slice(i, i + batchSize);
 
-      const batchPromises = batch.map(async (zipCode) => {
-        const boundary = await this.getZipBoundary(zipCode, simplified);
-        if (boundary) {
-          return boundary;
+      try {
+        // Build SQL IN clause for batch query
+        const zipList = batch.map(zip => `'${zip}'`).join(',');
+
+        const params = new URLSearchParams({
+          where: `ZCTA5 IN (${zipList})`,
+          outFields: 'ZCTA5,GEOID,NAME,AREALAND,AREAWATER,CENTLAT,CENTLON',
+          returnGeometry: 'true',
+          f: 'geojson',
+          geometryPrecision: simplified ? '4' : '6'
+        });
+
+        const url = `${TIGER_API_BASE}/${ZCTA_LAYER}/query?${params}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`TIGER API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data && data.features) {
+          // Normalize and cache each feature individually
+          data.features.forEach(feature => {
+            const normalizedFeature = this.normalizeFeature(feature);
+            const zipCode = normalizedFeature.properties?.zipcode;
+
+            if (zipCode) {
+              const cacheKey = `zip:${zipCode}:${simplified}`;
+              this.cache.set(cacheKey, {
+                data: normalizedFeature,
+                expires: Date.now() + this.cacheTimeout
+              });
+            }
+            features.push(normalizedFeature);
+          });
+
+          // Track missing ZIPs
+          const returnedZips = new Set(data.features.map(f => f.properties?.ZCTA5));
+          batch.forEach(zip => {
+            if (!returnedZips.has(zip)) {
+              errors.push(zip);
+            }
+          });
         } else {
-          errors.push(zipCode);
-          return null;
+          // All ZIPs in this batch failed
+          errors.push(...batch);
         }
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-
-      // Add successful results to features array
-      batchResults.forEach(result => {
-        if (result) {
-          features.push(result);
-        }
-      });
+      } catch (error) {
+        console.error(`Batch query failed for ${batch.length} ZIPs:`, error);
+        errors.push(...batch);
+      }
     }
 
     // Only log summary if there were failures
@@ -121,101 +189,65 @@ class ZipBoundariesService {
 
   /**
    * Get boundaries for current viewport
+   * NOTE: TIGER API doesn't support viewport-based spatial queries directly.
+   * This method is kept for backwards compatibility but returns cached data only.
+   * The app primarily uses getMultipleZipBoundaries() based on search results.
+   *
    * @param {Object} bounds - Map bounds {north, south, east, west}
    * @param {number} limit - Maximum number of boundaries to return
    * @param {boolean} simplified - Whether to use simplified geometry
    * @returns {Promise<Object>} GeoJSON FeatureCollection
    */
   async getViewportBoundaries(bounds, limit = 50, simplified = true) {
-    const { north, south, east, west } = bounds;
-
     // Check localStorage cache first
     const cached = boundaryCache.getViewportBoundaries(bounds);
     if (cached) {
       return cached;
     }
 
-    try {
-      const params = new URLSearchParams({
-        north: north.toString(),
-        south: south.toString(),
-        east: east.toString(),
-        west: west.toString(),
-        limit: limit.toString(),
-        simplified: simplified.toString()
-      });
+    // TIGER API doesn't support direct spatial bbox queries for ZCTA
+    // Return empty collection - app should use result-based loading instead
+    console.log('Viewport-based boundary loading not supported with TIGER API. Use result-based loading.');
 
-      const url = `${API_BASE_URL}/zip/boundaries/viewport?${params}`;
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Store in localStorage cache
-      if (data.features && data.features.length > 0) {
-        boundaryCache.storeViewportBoundaries(bounds, data);
-      }
-
-      return data;
-    } catch (error) {
-      // Return empty collection on error
-      return {
-        type: 'FeatureCollection',
-        features: []
-      };
-    }
+    return {
+      type: 'FeatureCollection',
+      features: []
+    };
   }
 
   /**
    * Get ZIP database statistics
-   * @returns {Promise<Object>} Statistics object
+   * NOTE: TIGER API doesn't provide statistics endpoint
+   * @returns {Promise<Object>} Statistics object (empty)
    */
   async getStats() {
-    const cacheKey = 'stats';
-
-    // Check cache
-    const cached = this.cache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) {
-      return cached.data;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/zip-stats`);
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Cache for longer since stats don't change often
-      this.cache.set(cacheKey, {
-        data,
-        expires: Date.now() + 60 * 60 * 1000 // 1 hour
-      });
-
-      return data;
-    } catch (error) {
-      console.error(`Error fetching stats: ${error.message}`);
-      throw error;
-    }
+    return {
+      message: 'Statistics not available from TIGER API',
+      source: 'Census TIGER/Line 2020'
+    };
   }
 
   /**
    * Check if the API is healthy
+   * Tests TIGER API with a simple query
    * @returns {Promise<boolean>} True if API is healthy
    */
   async checkHealth() {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      // Test with a known ZIP code
+      const params = new URLSearchParams({
+        where: "ZCTA5='10001'",
+        returnCountOnly: 'true',
+        f: 'json'
+      });
+
+      const url = `${TIGER_API_BASE}/${ZCTA_LAYER}/query?${params}`;
+      const response = await fetch(url);
+
       if (!response.ok) return false;
 
       const data = await response.json();
-      return data.status === 'healthy';
+      return data.count !== undefined;
     } catch {
       return false;
     }

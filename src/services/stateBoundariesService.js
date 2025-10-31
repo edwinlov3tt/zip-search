@@ -1,20 +1,37 @@
 /**
  * State Boundaries Service
- * Fetches state polygons via HTTPS API.
+ * Fetches state polygons from Census TIGER API
  */
 
-const API_BASE_URL = (() => {
-  const raw = import.meta.env.VITE_GEO_API_BASE
-  if (!raw) return null
-  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`
-})()
-
+// Census TIGER API endpoint for State boundaries
+const TIGER_API_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer';
+const STATE_LAYER = 0; // States layer
 
 class StateBoundariesService {
   constructor() {
     this.singleCache = new Map(); // key: code -> { data, expires }
     this.viewportCache = new Map(); // key: rounded bbox -> { data, expires }
     this.ttlMs = 5 * 60 * 1000;
+  }
+
+  /**
+   * Normalize TIGER API feature to match expected format
+   * Maps NAME -> name, STUSAB -> code, etc.
+   */
+  normalizeFeature(feature) {
+    if (!feature) return null;
+
+    return {
+      ...feature,
+      properties: {
+        ...feature.properties,
+        // Map TIGER fields to expected fields
+        name: feature.properties.NAME || feature.properties.name,
+        code: feature.properties.STUSAB || feature.properties.code, // 2-letter state code
+        state_code: feature.properties.STUSAB || feature.properties.state_code,
+        fips: feature.properties.STATE || feature.properties.fips // 2-digit FIPS code
+      }
+    };
   }
 
   getCache(map, key) {
@@ -37,52 +54,90 @@ class StateBoundariesService {
     const cached = this.getCache(this.viewportCache, vKey);
     if (cached) return cached;
 
-    // HTTPS API
-    if (API_BASE_URL) {
-      try {
-        const params = new URLSearchParams({
-          north: String(north), south: String(south), east: String(east), west: String(west),
-          limit: String(limit), simplified: String(!!simplified)
-        })
-        if (simplified && tolerance != null) params.set('tolerance', String(tolerance))
-        const res = await fetch(`${API_BASE_URL}/states/viewport?${params}`)
-        if (res.ok) {
-          const json = await res.json();
-          this.setCache(this.viewportCache, vKey, json);
-          return json;
+    try {
+      // TIGER API spatial query with envelope
+      const params = new URLSearchParams({
+        geometry: JSON.stringify({
+          xmin: west,
+          ymin: south,
+          xmax: east,
+          ymax: north,
+          spatialReference: { wkid: 4326 }
+        }),
+        geometryType: 'esriGeometryEnvelope',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'STATE,STUSAB,NAME,GEOID,AREALAND,CENTLAT,CENTLON',
+        returnGeometry: 'true',
+        f: 'geojson',
+        geometryPrecision: simplified ? '3' : '5',
+        resultRecordCount: limit
+      });
+
+      const url = `${TIGER_API_BASE}/${STATE_LAYER}/query?${params}`;
+      const res = await fetch(url);
+
+      if (res.ok) {
+        const json = await res.json();
+        // Normalize features
+        if (json && json.features) {
+          json.features = json.features.map(f => this.normalizeFeature(f));
         }
-      } catch (_) {}
+        this.setCache(this.viewportCache, vKey, json);
+        return json;
+      }
+    } catch (err) {
+      console.error('State viewport query failed:', err);
     }
 
     const empty = { type: 'FeatureCollection', features: [] };
     this.setCache(this.viewportCache, vKey, empty);
-    return empty
+    return empty;
   }
 
   async getStateBoundary(code, simplified = true, tolerance = 0.01) {
-    if (!code) return null
+    if (!code) return null;
     const key = `${String(code).toUpperCase()}:${simplified}:${tolerance}`;
     const cached = this.getCache(this.singleCache, key);
     if (cached) return cached;
-    // Prefer API endpoint for single state
-    if (API_BASE_URL) {
-      try {
-        const params = new URLSearchParams()
-        if (simplified) {
-          params.set('simplified', 'true')
-          params.set('tolerance', String(tolerance))
+
+    try {
+      const codeUpper = String(code).toUpperCase();
+
+      // Determine query type: 2-letter code (STUSAB), 2-digit FIPS (STATE), or full name
+      let whereClause;
+      if (codeUpper.length === 2 && /^[A-Z]{2}$/.test(codeUpper)) {
+        whereClause = `STUSAB='${codeUpper}'`;
+      } else if (/^\d{1,2}$/.test(codeUpper)) {
+        whereClause = `STATE='${codeUpper.padStart(2, '0')}'`;
+      } else {
+        whereClause = `NAME='${codeUpper}'`;
+      }
+
+      const params = new URLSearchParams({
+        where: whereClause,
+        outFields: 'STATE,STUSAB,NAME,GEOID,AREALAND,CENTLAT,CENTLON',
+        returnGeometry: 'true',
+        f: 'geojson',
+        geometryPrecision: simplified ? '3' : '5'
+      });
+
+      const url = `${TIGER_API_BASE}/${STATE_LAYER}/query?${params}`;
+      const res = await fetch(url);
+
+      if (res.ok) {
+        const json = await res.json();
+        // Extract and normalize first feature if exists
+        if (json && json.features && json.features.length > 0) {
+          const feature = this.normalizeFeature(json.features[0]);
+          this.setCache(this.singleCache, key, feature);
+          return feature;
         }
-        const url = `${API_BASE_URL}/state/${encodeURIComponent(code)}${params.toString() ? `?${params}` : ''}`
-        const res = await fetch(url)
-        if (res.ok) {
-          const json = await res.json();
-          this.setCache(this.singleCache, key, json);
-          return json;
-        }
-      } catch (_) {}
+      }
+    } catch (err) {
+      console.error('State boundary query failed:', err);
     }
 
-    return null
+    return null;
   }
 }
 
