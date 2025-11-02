@@ -216,7 +216,7 @@ const AddressSearch = ({
                           : 'hover:bg-gray-50 border-gray-100 text-gray-900'
                       }`}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, isSearching, setIsSearching })}
+                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
                     >
                       <div className="flex items-center space-x-3">
                         <span className="text-lg">{geocodingService.getResultIcon(result.type)}</span>
@@ -430,7 +430,7 @@ const AddressSearch = ({
                           : 'hover:bg-gray-50 border-gray-100 text-gray-900'
                       }`}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, isSearching, setIsSearching })}
+                      onClick={() => handleAutocompleteSelect(result, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
                     >
                       <div className="flex items-center space-x-3">
                         <span className="text-lg">{geocodingService.getResultIcon(result.type)}</span>

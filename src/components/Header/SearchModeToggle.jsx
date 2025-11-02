@@ -23,8 +23,9 @@ const SearchModeToggle = ({ searchMode, handleSearchModeChange, isDarkMode }) =>
                 : `${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-gray-900'}`
             }`}
           >
-            <span className="hidden lg:inline">{mode.label}</span>
-            <span className="lg:hidden">{mode.shortLabel}</span>
+            {/* Show full label on screens >= 1536px (2xl), short label below */}
+            <span className="hidden 2xl:inline">{mode.label}</span>
+            <span className="2xl:hidden">{mode.shortLabel}</span>
           </button>
         ))}
       </div>

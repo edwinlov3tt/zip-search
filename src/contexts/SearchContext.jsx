@@ -2,7 +2,9 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import Papa from 'papaparse';
 import { ZipCodeService } from '../services/zipCodeService';
 import { geocodingService } from '../services/geocodingService';
+import { googlePlacesService } from '../services/googlePlacesService';
 import { detectColumnTypes } from '../utils/csvHelpers';
+import { milesToMeters } from '../utils/polygonHelpers';
 import { useResults } from './ResultsContext';
 import { useMap } from './MapContext';
 import { useUI } from './UIContext';
@@ -62,7 +64,7 @@ export const SearchProvider = ({ children }) => {
     clearResults
   } = useResults();
 
-  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType, mapType } = useMap();
+  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType, mapType, handleResultMapInteraction } = useMap();
 
   const { setIsSearchPanelCollapsed, setActiveTab, setDrawerState } = useUI();
 
@@ -1934,7 +1936,7 @@ export const SearchProvider = ({ children }) => {
 
     if (location.source === 'google' && location.id) {
       try {
-        const googlePlacesService = (await import('../services/googlePlacesService')).default;
+        // Pass the placeId to get full details
         const placeDetails = await googlePlacesService.selectPlace(location.id);
 
         if (placeDetails) {
@@ -1962,17 +1964,47 @@ export const SearchProvider = ({ children }) => {
       uiContext.setAutocompleteResults([]);
     }
 
-    // Center map on selected location
-    setMapCenter([finalLocation.lat, finalLocation.lng]);
-    setMapZoom(13);
+    // Determine zoom level based on location type
+    let zoomLevel = 13; // Default zoom
 
-    // Check if we're in Address Search mode
+    // Adjust zoom based on location type for better UX
+    if (finalLocation.type === 'zipcode' || finalLocation.type === 'address') {
+      zoomLevel = 13; // Street level for precise locations
+    } else if (finalLocation.type === 'city') {
+      zoomLevel = 11; // City level
+    } else if (finalLocation.type === 'county') {
+      zoomLevel = 9; // County level
+    } else if (finalLocation.type === 'state') {
+      zoomLevel = 6; // State level
+    }
+
+    // Check if we're in Address Search mode with polygon
     if (searchMode === 'address' && addressSubMode === 'polygon') {
-      // Polygon mode: Just center the map, don't trigger search
+      // Polygon mode: Zoom in closer for better polygon drawing
+      zoomLevel = 15;
+    }
+
+    // Center and zoom map on selected location using direct map control
+    handleResultMapInteraction({
+      type: finalLocation.type || 'place',
+      result: finalLocation,
+      center: [finalLocation.lat, finalLocation.lng],
+      zoom: zoomLevel
+    });
+
+    // Also update state for consistency
+    setMapCenter([finalLocation.lat, finalLocation.lng]);
+    setMapZoom(zoomLevel);
+
+    // Check if we're in Address Search polygon mode - exit early
+    if (searchMode === 'address' && addressSubMode === 'polygon') {
+      // Just center the map, don't trigger search
       // User will draw polygon manually after centering
       setApiError(null);
       return; // Exit early - don't trigger any search
-    } else if (searchMode === 'address' && addressSubMode === 'radius') {
+    }
+
+    if (searchMode === 'address' && addressSubMode === 'radius') {
       // Radius mode: Trigger Address Search
       setIsLoading(true);
       setSearchPerformed(true);
@@ -1986,6 +2018,9 @@ export const SearchProvider = ({ children }) => {
           setIsLoading(false);
           return;
         }
+
+        // Import overpassService dynamically
+        const { default: overpassService } = await import('../services/overpassService');
 
         const radiusMeters = milesToMeters(addressRadius);
         const addresses = await overpassService.searchAddressesByRadius(finalLocation.lat, finalLocation.lng, radiusMeters);

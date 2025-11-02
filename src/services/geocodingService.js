@@ -384,6 +384,18 @@ class GeocodingService {
   formatDisplayName(result) {
     const { address, type, name, displayName } = result;
 
+    // DEFENSIVE: For Google prediction results, address object doesn't exist yet
+    // It's only populated after calling getPlaceDetails() on selection
+    // If no address object, just use displayName or name directly
+    if (!address || Object.keys(address).length === 0) {
+      if (displayName) {
+        // Simplify long display names (max 3 parts)
+        const displayParts = displayName.split(', ');
+        return displayParts.slice(0, 3).join(', ');
+      }
+      return name || 'Unknown Location';
+    }
+
     switch (type) {
       case 'zipcode':
         if (address.state) {
