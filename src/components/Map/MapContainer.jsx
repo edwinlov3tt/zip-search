@@ -43,6 +43,9 @@ const MapContainer = ({
     stateBoundariesData,
     showCityBoundaries,
     cityBoundariesData,
+    showVtdBoundaries,
+    vtdBoundariesData,
+    focusedVtd,
     showMarkers
   } = useMap();
 
@@ -150,6 +153,9 @@ const MapContainer = ({
         stateBoundariesData={stateBoundariesData}
         showCityBoundaries={showCityBoundaries}
         cityBoundariesData={cityBoundariesData}
+        showVtdBoundaries={showVtdBoundaries}
+        vtdBoundariesData={vtdBoundariesData}
+        focusedVtd={focusedVtd}
         countyResults={countyResults}
         zipResults={zipResults}
         removedItems={removedItems}

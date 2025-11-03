@@ -4,6 +4,7 @@ import CountyBoundaryLayer from './layers/CountyBoundaryLayer';
 import ZipBoundaryLayer from './layers/ZipBoundaryLayer';
 import StateBoundaryLayer from './layers/StateBoundaryLayer';
 import CityBoundaryLayer from './layers/CityBoundaryLayer';
+import VtdBoundaryLayer from './layers/VtdBoundaryLayer';
 
 const BoundaryLayers = ({
   showCountyBorders,
@@ -17,6 +18,9 @@ const BoundaryLayers = ({
   stateBoundariesData,
   showCityBoundaries,
   cityBoundariesData,
+  showVtdBoundaries,
+  vtdBoundariesData,
+  focusedVtd,
   countyResults,
   zipResults,
   removedItems,
@@ -78,6 +82,16 @@ const BoundaryLayers = ({
       {showCityBoundaries && cityBoundariesData && (
         <CityBoundaryLayer
           cityBoundariesData={cityBoundariesData}
+        />
+      )}
+
+      {/* VTD Boundaries Layer */}
+      {showVtdBoundaries && vtdBoundariesData && (
+        <VtdBoundaryLayer
+          vtdBoundariesData={vtdBoundariesData}
+          focusedVtd={focusedVtd}
+          setToastMessage={setToastMessage}
+          setToastType={setToastType}
         />
       )}
     </>

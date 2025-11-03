@@ -24,6 +24,11 @@ const BoundarySettings = () => {
     zipBoundariesData,
     setZipBoundariesData,
     loadingZipBoundaries,
+    showVtdBoundaries,
+    setShowVtdBoundaries,
+    vtdBoundariesData,
+    setVtdBoundariesData,
+    loadingVtdBoundaries,
     showMarkers,
     setShowMarkers
   } = useMap();
@@ -193,6 +198,35 @@ const BoundarySettings = () => {
                     if (!e.target.checked) setCityBoundariesData(null);
                   }}
                   disabled={loadingCityBoundaries}
+                  className="rounded"
+                />
+              </label>
+
+              {/* VTD Boundaries - Experimental */}
+              <label
+                className={`flex items-center justify-between text-xs cursor-pointer p-2 rounded transition-colors ${
+                  isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                }`}
+                title="Experimental: VTD boundaries may not load for all areas due to Census Tiger API limitations. Works best for small geographic areas."
+              >
+                <span className="flex items-center space-x-1">
+                  <span>Voting District Boundaries</span>
+                  <span className="text-[9px] opacity-50">(Beta)</span>
+                  {loadingVtdBoundaries && <span className="inline-block animate-spin">⟳</span>}
+                  {vtdBoundariesData && vtdBoundariesData.features && vtdBoundariesData.features.length > 0 && (
+                    <span className="text-[10px] opacity-70">
+                      ({vtdBoundariesData.features.length})
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={showVtdBoundaries}
+                  onChange={(e) => {
+                    setShowVtdBoundaries(e.target.checked);
+                    if (!e.target.checked) setVtdBoundariesData(null);
+                  }}
+                  disabled={loadingVtdBoundaries}
                   className="rounded"
                 />
               </label>

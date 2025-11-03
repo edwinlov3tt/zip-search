@@ -5,6 +5,8 @@ import { useSearch } from '../../contexts/SearchContext';
 import zipBoundariesService from '../../services/zipBoundariesService';
 import stateBoundariesService from '../../services/stateBoundariesService';
 import cityBoundariesService from '../../services/cityBoundariesService';
+import vtdBoundariesService from '../../services/vtdBoundariesService';
+import countyFipsService from '../../services/countyFipsService';
 
 /**
  * BoundaryManager - Handles loading boundary data based on toggles and search results
@@ -20,7 +22,10 @@ const BoundaryManager = () => {
     setLoadingStateBoundaries,
     showCityBoundaries,
     setCityBoundariesData,
-    setLoadingCityBoundaries
+    setLoadingCityBoundaries,
+    showVtdBoundaries,
+    setVtdBoundariesData,
+    setLoadingVtdBoundaries
   } = useMap();
 
   const { zipResults, cityResults } = useResults();
@@ -29,6 +34,7 @@ const BoundaryManager = () => {
   // Refs to track loading state
   const lastStateLoadRef = useRef(false);
   const lastCityKeysRef = useRef('');
+  const lastVtdStatesRef = useRef('');
 
   // Load ALL U.S. state boundaries (50 states + DC + PR)
   const loadAllStateBoundaries = useCallback(async () => {
@@ -185,6 +191,93 @@ const BoundaryManager = () => {
     }
   }, [showCityBoundaries, cityResults, setCityBoundariesData, setLoadingCityBoundaries]);
 
+  // Load VTD boundaries for search results area (county-based approach)
+  const loadVtdBoundariesForResults = useCallback(async () => {
+    if (!showVtdBoundaries || !searchPerformed) {
+      console.log('[VTD Boundaries] Skipping load:', {
+        showVtdBoundaries,
+        searchPerformed
+      });
+      return;
+    }
+
+    // Extract unique counties from ZIP and city results
+    const uniqueCounties = new Map(); // Map<"County,State", {county, state}>
+
+    // Get counties from ZIP results
+    if (zipResults && zipResults.length > 0) {
+      zipResults.forEach(result => {
+        if (result.county && result.state) {
+          const key = `${result.county},${result.state}`;
+          if (!uniqueCounties.has(key)) {
+            uniqueCounties.set(key, { county: result.county, state: result.state });
+          }
+        }
+      });
+    }
+
+    // Get counties from city results
+    if (cityResults && cityResults.length > 0) {
+      cityResults.forEach(result => {
+        if (result.county && result.state) {
+          const key = `${result.county},${result.state}`;
+          if (!uniqueCounties.has(key)) {
+            uniqueCounties.set(key, { county: result.county, state: result.state });
+          }
+        }
+      });
+    }
+
+    if (uniqueCounties.size === 0) {
+      console.log('[VTD Boundaries] No counties found in results');
+      return;
+    }
+
+    const counties = Array.from(uniqueCounties.values());
+    console.log(`[VTD Boundaries] Found ${counties.length} unique counties in results:`,
+      counties.map(c => `${c.county}, ${c.state}`));
+
+    // Convert county names to FIPS codes
+    const countyFipsCodes = countyFipsService.getMultipleCountyFips(counties);
+
+    if (countyFipsCodes.length === 0) {
+      console.warn('[VTD Boundaries] No FIPS codes found for counties');
+      return;
+    }
+
+    // Create cache key based on county FIPS codes
+    const fipsKey = countyFipsCodes.sort().join(',');
+
+    // Skip if we already loaded VTDs for these counties
+    if (fipsKey === lastVtdStatesRef.current) {
+      console.log('[VTD Boundaries] Already loaded VTDs for these counties');
+      return;
+    }
+    lastVtdStatesRef.current = fipsKey;
+
+    console.log(`[VTD Boundaries] Loading VTDs for ${countyFipsCodes.length} counties (FIPS):`, countyFipsCodes);
+    setLoadingVtdBoundaries(true);
+
+    try {
+      // Query VTDs by county FIPS codes
+      const boundariesData = await vtdBoundariesService.getVtdBoundariesForCounties(
+        countyFipsCodes,
+        true // simplified geometry
+      );
+
+      if (boundariesData && boundariesData.features.length > 0) {
+        setVtdBoundariesData(boundariesData);
+        console.log(`[VTD Boundaries] Loaded ${boundariesData.features.length} VTD boundaries for ${countyFipsCodes.length} counties`);
+      } else {
+        console.warn('[VTD Boundaries] No VTD features returned for counties:', countyFipsCodes);
+      }
+    } catch (error) {
+      console.error('[VTD Boundaries] Error loading:', error);
+    } finally {
+      setLoadingVtdBoundaries(false);
+    }
+  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, setVtdBoundariesData, setLoadingVtdBoundaries]);
+
   // Effect: Load state boundaries when toggled on
   useEffect(() => {
     if (showStateBoundaries) {
@@ -213,6 +306,16 @@ const BoundaryManager = () => {
       lastCityKeysRef.current = ''; // Reset so it loads next time
     }
   }, [showCityBoundaries, cityResults, loadCityBoundariesForResults, setCityBoundariesData]);
+
+  // Effect: Load VTD boundaries when toggled on or when results change
+  useEffect(() => {
+    if (showVtdBoundaries) {
+      loadVtdBoundariesForResults();
+    } else {
+      setVtdBoundariesData(null);
+      lastVtdStatesRef.current = ''; // Reset so it loads next time
+    }
+  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, loadVtdBoundariesForResults, setVtdBoundariesData]);
 
   // This component doesn't render anything
   return null;

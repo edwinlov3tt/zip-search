@@ -42,6 +42,11 @@ export const MapProvider = ({ children }) => {
   const [cityBoundariesData, setCityBoundariesData] = useState(null);
   const [loadingCityBoundaries, setLoadingCityBoundaries] = useState(false);
 
+  const [showVtdBoundaries, setShowVtdBoundaries] = useState(false);
+  const [vtdBoundariesData, setVtdBoundariesData] = useState(null);
+  const [loadingVtdBoundaries, setLoadingVtdBoundaries] = useState(false);
+  const [focusedVtd, setFocusedVtd] = useState(null);
+
   // Map layer selector state
   const [showMapLayers, setShowMapLayers] = useState(false);
 
@@ -204,6 +209,14 @@ export const MapProvider = ({ children }) => {
     // Note: Loading happens in GeoApplication based on search results
   }, [showCityBoundaries]);
 
+  // Effect to clear VTD boundaries when toggled off
+  useEffect(() => {
+    if (!showVtdBoundaries) {
+      setVtdBoundariesData(null);
+    }
+    // Note: Loading happens in GeoApplication based on search results
+  }, [showVtdBoundaries]);
+
   const value = {
     // Map state
     mapType,
@@ -256,6 +269,16 @@ export const MapProvider = ({ children }) => {
     setCityBoundariesData,
     loadingCityBoundaries,
     setLoadingCityBoundaries,
+
+    // VTD boundaries
+    showVtdBoundaries,
+    setShowVtdBoundaries,
+    vtdBoundariesData,
+    setVtdBoundariesData,
+    loadingVtdBoundaries,
+    setLoadingVtdBoundaries,
+    focusedVtd,
+    setFocusedVtd,
 
     // Map layer selector
     showMapLayers,

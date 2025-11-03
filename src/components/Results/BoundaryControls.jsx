@@ -20,7 +20,12 @@ const BoundaryControls = ({ zipBoundariesService }) => {
     setShowZipBoundaries,
     zipBoundariesData,
     setZipBoundariesData,
-    loadingZipBoundaries
+    loadingZipBoundaries,
+    showVtdBoundaries,
+    setShowVtdBoundaries,
+    vtdBoundariesData,
+    setVtdBoundariesData,
+    loadingVtdBoundaries
   } = useMap();
 
   const { isDarkMode } = useUI();
@@ -89,6 +94,27 @@ const BoundaryControls = ({ zipBoundariesService }) => {
         />
         <span className="flex items-center space-x-1">
           City Boundaries {loadingCityBoundaries && <span className="inline-block animate-spin">⟳</span>}
+        </span>
+      </label>
+
+      <label className="flex items-center space-x-1 text-xs">
+        <input
+          type="checkbox"
+          checked={showVtdBoundaries}
+          onChange={(e) => {
+            setShowVtdBoundaries(e.target.checked);
+            if (!e.target.checked) setVtdBoundariesData(null);
+          }}
+          className="rounded"
+          disabled={loadingVtdBoundaries}
+        />
+        <span className="flex items-center space-x-1">
+          Voting District Boundaries {loadingVtdBoundaries && <span className="inline-block animate-spin">⟳</span>}
+          {vtdBoundariesData && vtdBoundariesData.features && (
+            <span className="text-[10px] opacity-70">
+              ({vtdBoundariesData.features.length})
+            </span>
+          )}
         </span>
       </label>
 
