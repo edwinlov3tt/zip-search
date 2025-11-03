@@ -108,7 +108,7 @@ class GooglePlacesService {
   // Load Google Maps Places library with new API using dynamic import
   async loadGoogleMaps() {
     if (!this.apiKey) {
-      console.warn('⚠️ [Google Places] No API key provided');
+      // Silent fail - no need to spam console
       return false;
     }
 

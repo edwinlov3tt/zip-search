@@ -53,7 +53,7 @@ class BoundaryCache {
         return this.initializeCache();
       }
 
-      console.log(`Loaded ${Object.keys(cache.boundaries).length} cached ZIP boundaries`);
+      // Silently load cached boundaries
       return cache;
     } catch (e) {
       console.error('Failed to load cache:', e);

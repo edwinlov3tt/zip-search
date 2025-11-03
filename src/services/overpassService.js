@@ -70,7 +70,15 @@ out center;
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
+        // Provide user-friendly error messages
+        if (response.status === 504) {
+          throw new Error('Request timed out. The area may be too large or the server is busy. Try a smaller area.');
+        } else if (response.status === 400) {
+          throw new Error('Invalid search area. Please try a different location or smaller area.');
+        } else if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a minute before trying again.');
+        }
+        throw new Error(`Search failed (${response.status}). Please try again.`);
       }
 
       const data = await response.json();
@@ -128,7 +136,15 @@ out center;
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
+        // Provide user-friendly error messages
+        if (response.status === 504) {
+          throw new Error('Request timed out. The area may be too large or the server is busy. Try a smaller area.');
+        } else if (response.status === 400) {
+          throw new Error('Invalid search area. Please try a different location or smaller area.');
+        } else if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a minute before trying again.');
+        }
+        throw new Error(`Search failed (${response.status}). Please try again.`);
       }
 
       const data = await response.json();

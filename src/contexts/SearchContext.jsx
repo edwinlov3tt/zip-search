@@ -2943,7 +2943,6 @@ export const SearchProvider = ({ children }) => {
   // NOTE: This function handles polygon drawing in ADDRESS SEARCH mode
   // It is separate from the regular Polygon Search mode (performSingleShapeSearch)
   const performSingleShapeSearchAddress = useCallback(async (shape, appendResults = false) => {
-    console.log('🟣 [ADDRESS SEARCH - Polygon] performSingleShapeSearchAddress called', { shape, appendResults });
     setIsLoading(true);
 
     // Always mark search as performed and show drawer
@@ -3014,7 +3013,6 @@ export const SearchProvider = ({ children }) => {
       } else {
         setApiError(null);
       }
-      console.log('✅ [ADDRESS SEARCH - Polygon] Search completed successfully', { resultCount: results.length });
     } catch (error) {
       setApiError(error.message || 'Failed to search addresses');
     } finally {

@@ -18,21 +18,17 @@ export async function runStartupDiagnostics() {
     mode: env.MODE || (env.DEV ? 'development' : 'production')
   };
 
-  console.groupCollapsed('%c[Diagnostics] startup', 'color:#2563EB');
-  console.log('env', info);
-
+  // Run diagnostics silently - only log errors
   try {
-    const sbOk = await supabaseService.checkHealth();
-    console.log('supabase.health', sbOk);
+    await supabaseService.checkHealth();
   } catch (e) {
-    console.warn('supabase.health error', e);
+    console.warn('⚠️ Supabase health check failed:', e.message);
   }
 
   try {
-    const api = await ZipCodeService.health();
-    console.log('api.health', api);
+    await ZipCodeService.health();
   } catch (e) {
-    console.warn('api.health error', e);
+    console.warn('⚠️ API health check failed:', e.message);
   }
 
   console.groupEnd();
