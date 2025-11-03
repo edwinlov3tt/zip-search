@@ -89,6 +89,9 @@ const SearchControls = ({
 
           {searchMode === 'polygon' && (
             <PolygonSearch
+              handleSearchInputChange={handleSearchInputChange}
+              handleAutocompleteBlur={handleAutocompleteBlur}
+              handleAutocompleteSelect={handleAutocompleteSelect}
               handleResetSearch={handleResetSearch}
             />
           )}

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { RotateCcw, X, ChevronDown, Check } from 'lucide-react';
+import { RotateCcw, X, ChevronDown, Check, Search, MapPin } from 'lucide-react';
 import { useSearch } from '../../contexts/SearchContext';
 import { useMap } from '../../contexts/MapContext';
 import { useUI } from '../../contexts/UIContext';
 
-const PolygonSearch = ({ handleResetSearch }) => {
+const PolygonSearch = ({ handleResetSearch, handleSearchInputChange, handleAutocompleteBlur, handleAutocompleteSelect }) => {
   const {
+    searchTerm,
     searchPerformed,
     isLoading,
     polygonSearches = [],
@@ -17,7 +18,15 @@ const PolygonSearch = ({ handleResetSearch }) => {
   } = useSearch();
 
   const { drawnShapes, mapRef, setShowZipBoundaries } = useMap();
-  const { isDarkMode } = useUI();
+  const {
+    isDarkMode,
+    autocompleteResults,
+    showAutocomplete,
+    setShowAutocomplete,
+    setAutocompleteResults,
+    isSearching,
+    setIsSearching
+  } = useUI();
 
   const [openMenuId, setOpenMenuId] = useState(null);
   const chipsContainerRef = useRef(null);
@@ -93,11 +102,61 @@ const PolygonSearch = ({ handleResetSearch }) => {
 
   return (
     <div className="flex flex-col gap-3 w-full">
-      {/* Main controls row */}
+      {/* Search bar for finding location to draw polygon around */}
       <div className="flex flex-row items-center gap-3 w-full">
-        <div className={`flex-1 flex items-center justify-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-          Draw shapes on the map to search within them
+        <div className="relative flex-1 min-w-0">
+          <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+          <input
+            type="text"
+            placeholder="Search location to draw polygon..."
+            value={searchTerm}
+            onChange={(e) => handleSearchInputChange(e, { isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
+            onBlur={() => handleAutocompleteBlur({ isDarkMode, autocompleteResults, showAutocomplete, setShowAutocomplete, setAutocompleteResults, isSearching, setIsSearching })}
+            className={`w-full h-9 pl-9 pr-3 rounded-lg border transition-colors ${
+              isDarkMode
+                ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+            }`}
+          />
+
+          {/* Autocomplete dropdown */}
+          {showAutocomplete && autocompleteResults.length > 0 && (
+            <div className={`absolute z-50 w-full mt-1 rounded-lg shadow-lg border max-h-60 overflow-y-auto ${
+              isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
+            }`}>
+              {autocompleteResults.map((result, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleAutocompleteSelect(result, {
+                      isDarkMode, autocompleteResults, showAutocomplete,
+                      setShowAutocomplete, setAutocompleteResults,
+                      isSearching, setIsSearching
+                    });
+                  }}
+                  className={`w-full px-4 py-3 text-left hover:bg-opacity-50 transition-colors flex items-start gap-3 ${
+                    isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <MapPin className={`h-4 w-4 mt-0.5 flex-shrink-0 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {result.displayName || result.display_name}
+                    </div>
+                    {result.type && (
+                      <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {result.type}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
         {searchPerformed && (
           <button
             onClick={handleResetSearch}
