@@ -3,7 +3,8 @@
 ## Project Structure & Modules
 - Source: `src/` (React + Vite); components in `*.jsx`, services in `src/services/` (API/data access), styles in `src/index.css`.
 - Public assets: `public/`; built output: `dist/`.
-- Docs: `docs/` (e.g., `SUPABASE_SETUP.md`, `MAPBOX_SETUP.md`).
+- **Architecture Docs**: `docs/app-architecture/` — comprehensive documentation of system architecture, data flow, and implementation patterns. **Start here** before making changes.
+- Setup Docs: `docs/` (e.g., `SUPABASE_SETUP.md`, `MAPBOX_SETUP.md`).
 - Utility scripts: `scripts/` (data import, local API servers).
 - Tests and fixtures: `tests/` (e.g., `test-zip-boundaries.js`).
 
@@ -34,3 +35,37 @@
 - Environment: use `.env` locally and `.env.production` for production defaults. Never commit secrets.
 - API keys: see `docs/SUPABASE_SETUP.md` and `docs/MAPBOX_SETUP.md` for required keys and setup.
 - Deployment: `vercel.json` provides deployment configuration; static assets are served from `dist/` after build.
+
+## Documentation Maintenance
+
+### Architecture Documentation (`docs/app-architecture/`)
+
+This folder contains living documentation that must be updated when making architectural changes.
+
+**Core Documentation**:
+- `00-overview.md` - Application overview, capabilities, statistics
+- `01-architecture-principles.md` - Design philosophy, architectural decisions
+- `02-tech-stack.md` - Technology inventory with rationale
+- `03-data-flow.md` - Visual flow diagrams for all search modes
+- `04-state-management.md` - Context provider architecture
+
+**Context Documentation** (`contexts/` subdirectory):
+- `SearchContext.md` - Search orchestration (update when adding search modes)
+- `MapContext.md` - Map visualization (update when adding boundary types)
+- `ResultsContext.md` - Data storage (update when adding result types)
+- `UIContext.md` - Presentation state (update when adding UI elements)
+
+**When to Update Documentation**:
+- Adding new search mode → Update `SearchContext.md` + `03-data-flow.md`
+- Adding new service → Update `02-tech-stack.md` + service-specific docs
+- Modifying state structure → Update relevant context documentation
+- Changing data flow → Update `03-data-flow.md`
+- Adding new dependencies → Update `02-tech-stack.md`
+- Architectural decisions → Update `01-architecture-principles.md`
+
+**Documentation Style**:
+- Use code examples with actual implementation snippets
+- Include file paths with line numbers for reference
+- Document "why" not just "what"
+- Provide usage examples for complex patterns
+- Keep code snippets up-to-date with actual implementation
