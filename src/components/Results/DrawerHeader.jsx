@@ -54,7 +54,7 @@ const DrawerHeader = ({
           {drawerState === 'collapsed' ? (
             <button
               onClick={() => setDrawerState('half')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Expand to Half"
             >
               <ChevronUp className="h-4 w-4" />
@@ -62,7 +62,7 @@ const DrawerHeader = ({
           ) : drawerState === 'half' ? (
             <button
               onClick={() => setDrawerState('collapsed')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Minimize"
             >
               <ChevronDown className="h-4 w-4" />
@@ -70,7 +70,7 @@ const DrawerHeader = ({
           ) : (
             <button
               onClick={() => setDrawerState('half')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Half View"
             >
               <ChevronDown className="h-4 w-4" />
@@ -81,7 +81,7 @@ const DrawerHeader = ({
           {drawerState === 'collapsed' ? (
             <button
               onClick={() => setDrawerState('full')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Expand to Full"
             >
               <Maximize2 className="h-4 w-4" />
@@ -89,7 +89,7 @@ const DrawerHeader = ({
           ) : drawerState === 'half' ? (
             <button
               onClick={() => setDrawerState('full')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Expand to Full"
             >
               <Maximize2 className="h-4 w-4" />
@@ -97,7 +97,7 @@ const DrawerHeader = ({
           ) : (
             <button
               onClick={() => setDrawerState('collapsed')}
-              className={`p-1 rounded transition-colors ${isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+              className={`p-1 rounded transition-colors ${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'}`}
               title="Minimize to Bottom"
             >
               <Minimize2 className="h-4 w-4" />
@@ -169,8 +169,8 @@ const DrawerHeader = ({
                 : copySuccess
                   ? 'bg-green-100 text-green-600'
                   : isDarkMode
-                    ? 'hover:bg-gray-600'
-                    : 'hover:bg-gray-200'
+                    ? 'text-white hover:bg-gray-600'
+                    : 'text-gray-700 hover:bg-gray-200'
             }`}
             title={shouldDisableCopyAndSimpleExport ? "Not available on this tab" : copySuccess ? "Copied!" : "Copy to clipboard"}
           >
@@ -190,8 +190,8 @@ const DrawerHeader = ({
                   ? 'opacity-30 cursor-not-allowed text-gray-500'
                   : 'opacity-30 cursor-not-allowed text-gray-400'
                 : isDarkMode
-                  ? 'hover:bg-gray-600'
-                  : 'hover:bg-gray-200'
+                  ? 'text-white hover:bg-gray-600'
+                  : 'text-gray-700 hover:bg-gray-200'
             }`}
             title={shouldDisableCopyAndSimpleExport ? "Not available on this tab" : `Export ${activeTab} (minimal)`}
           >
@@ -207,8 +207,8 @@ const DrawerHeader = ({
                   ? 'opacity-30 cursor-not-allowed text-gray-500'
                   : 'opacity-30 cursor-not-allowed text-gray-400'
                 : isDarkMode
-                  ? 'hover:bg-gray-600'
-                  : 'hover:bg-gray-200'
+                  ? 'text-white hover:bg-gray-600'
+                  : 'text-gray-700 hover:bg-gray-200'
             }`}
             title={shouldDisableCustomExport ? "Not available on Excluded tab" : "Custom export options"}
           >

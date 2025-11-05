@@ -77,16 +77,14 @@ const BoundarySettings = () => {
 
   return (
     <div
-      className="relative"
+      className={`relative ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
       ref={dropdownRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
     >
       <button
         onClick={() => setIsOpen(!isOpen)}
         onMouseDown={(e) => e.stopPropagation()}
-        className={`p-1 rounded transition-colors flex items-center space-x-1 ${
-          isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
+        className={`p-1 rounded transition-colors flex items-center space-x-1 pointer-events-auto ${
+          isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-200'
         }`}
         title="Map Settings"
       >
@@ -104,14 +102,14 @@ const BoundarySettings = () => {
             <div
               className={`absolute right-0 ${positionClass} w-64 rounded-lg shadow-lg border ${
                 isDarkMode
-                  ? 'bg-gray-800 border-gray-600'
-                  : 'bg-white border-gray-200'
+                  ? 'bg-gray-800 border-gray-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-900'
               } z-50`}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
           <div className={`p-3 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <h3 className="text-sm font-semibold">Map Settings</h3>
+            <h3 className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Map Settings</h3>
           </div>
 
           <div className="p-3 space-y-3">

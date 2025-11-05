@@ -28,7 +28,7 @@ const BoundaryManager = () => {
     setLoadingVtdBoundaries
   } = useMap();
 
-  const { zipResults, cityResults } = useResults();
+  const { zipResults, cityResults, geocodeResults, addressResults } = useResults();
   const { searchPerformed, searchMode, radiusCenter, radius } = useSearch();
 
   // Refs to track loading state
@@ -86,30 +86,61 @@ const BoundaryManager = () => {
 
   // Load ZIP boundaries for search results
   const loadZipBoundariesForResults = useCallback(async () => {
-    if (!showZipBoundaries || !searchPerformed || !zipResults || zipResults.length === 0) {
+    // Check if we should load boundaries
+    const hasZipResults = zipResults && zipResults.length > 0;
+    const hasGeocodeResults = searchMode === 'geocode' && geocodeResults && geocodeResults.length > 0;
+    const hasAddressResults = searchMode === 'address' && addressResults && addressResults.length > 0;
+
+    if (!showZipBoundaries) {
+      return;
+    }
+
+    if (!hasZipResults && !hasGeocodeResults && !hasAddressResults) {
       console.log('[ZIP Boundaries] Skipping load:', {
         showZipBoundaries,
-        searchPerformed,
-        zipCount: zipResults?.length || 0
+        zipCount: zipResults?.length || 0,
+        geocodeCount: geocodeResults?.length || 0,
+        addressCount: addressResults?.length || 0,
+        searchMode
       });
       return;
     }
 
-    console.log('[ZIP Boundaries] Loading boundaries for', zipResults.length, 'ZIP results');
+    console.log('[ZIP Boundaries] Loading boundaries for results');
     setLoadingZipBoundaries(true);
 
     try {
-      // Extract unique ZIP codes from search results
-      const resultZipCodes = [...new Set(zipResults.map(result => result.zipCode || result.zipcode))];
-      console.log('[ZIP Boundaries] Result ZIP codes:', resultZipCodes.length, 'unique ZIPs');
+      // Extract unique ZIP codes from all available sources
+      const allZipCodes = new Set();
 
-      // For radius/polygon searches, fetch boundaries for result ZIPs
-      // Note: We're not fetching nearby ZIPs to keep it simple and fast
-      const allZipCodes = resultZipCodes;
+      // From normal ZIP search results
+      if (hasZipResults) {
+        zipResults.forEach(result => {
+          const zip = result.zipCode || result.zipcode;
+          if (zip) allZipCodes.add(zip);
+        });
+      }
+
+      // From geocoded addresses
+      if (hasGeocodeResults) {
+        geocodeResults.forEach(result => {
+          if (result.zip) allZipCodes.add(result.zip);
+        });
+      }
+
+      // From address search results
+      if (hasAddressResults) {
+        addressResults.forEach(result => {
+          if (result.postcode) allZipCodes.add(result.postcode);
+        });
+      }
+
+      const resultZipCodes = Array.from(allZipCodes);
+      console.log('[ZIP Boundaries] Unique ZIP codes:', resultZipCodes.length);
 
       // Fetch boundaries from TIGER API
       const boundariesData = await zipBoundariesService.getMultipleZipBoundaries(
-        allZipCodes,
+        resultZipCodes,
         true // simplified
       );
 
@@ -132,7 +163,7 @@ const BoundaryManager = () => {
     } finally {
       setLoadingZipBoundaries(false);
     }
-  }, [showZipBoundaries, searchPerformed, zipResults, setZipBoundariesData, setLoadingZipBoundaries]);
+  }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, setZipBoundariesData, setLoadingZipBoundaries]);
 
   // Load city boundaries for city results
   const loadCityBoundariesForResults = useCallback(async () => {
@@ -193,15 +224,20 @@ const BoundaryManager = () => {
 
   // Load VTD boundaries for search results area (county-based approach)
   const loadVtdBoundariesForResults = useCallback(async () => {
-    if (!showVtdBoundaries || !searchPerformed) {
+    const hasData = (zipResults && zipResults.length > 0) ||
+                    (cityResults && cityResults.length > 0) ||
+                    (geocodeResults && geocodeResults.length > 0) ||
+                    (addressResults && addressResults.length > 0);
+
+    if (!showVtdBoundaries || !hasData) {
       console.log('[VTD Boundaries] Skipping load:', {
         showVtdBoundaries,
-        searchPerformed
+        hasData
       });
       return;
     }
 
-    // Extract unique counties from ZIP and city results
+    // Extract unique counties from all available result sources
     const uniqueCounties = new Map(); // Map<"County,State", {county, state}>
 
     // Get counties from ZIP results
@@ -224,6 +260,29 @@ const BoundaryManager = () => {
           if (!uniqueCounties.has(key)) {
             uniqueCounties.set(key, { county: result.county, state: result.state });
           }
+        }
+      });
+    }
+
+    // Get counties from geocode results (if county field exists in CSV)
+    if (geocodeResults && geocodeResults.length > 0) {
+      geocodeResults.forEach(result => {
+        if (result.county && result.state) {
+          const key = `${result.county},${result.state}`;
+          if (!uniqueCounties.has(key)) {
+            uniqueCounties.set(key, { county: result.county, state: result.state });
+          }
+        }
+      });
+    }
+
+    // Get counties from address search results (derive from city if available)
+    if (addressResults && addressResults.length > 0) {
+      addressResults.forEach(result => {
+        if (result.city && result.state) {
+          // We'll try to derive county from city using the FIPS service
+          // For now, just skip if no direct county field
+          // The FIPS service can handle city->county mapping
         }
       });
     }
@@ -276,7 +335,7 @@ const BoundaryManager = () => {
     } finally {
       setLoadingVtdBoundaries(false);
     }
-  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, setVtdBoundariesData, setLoadingVtdBoundaries]);
+  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, setVtdBoundariesData, setLoadingVtdBoundaries]);
 
   // Effect: Load state boundaries when toggled on
   useEffect(() => {
@@ -295,7 +354,7 @@ const BoundaryManager = () => {
     } else {
       setZipBoundariesData(null);
     }
-  }, [showZipBoundaries, searchPerformed, zipResults, loadZipBoundariesForResults, setZipBoundariesData]);
+  }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, loadZipBoundariesForResults, setZipBoundariesData]);
 
   // Effect: Load city boundaries when toggled on or when city results change
   useEffect(() => {
@@ -315,7 +374,7 @@ const BoundaryManager = () => {
       setVtdBoundariesData(null);
       lastVtdStatesRef.current = ''; // Reset so it loads next time
     }
-  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, loadVtdBoundariesForResults, setVtdBoundariesData]);
+  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, loadVtdBoundariesForResults, setVtdBoundariesData]);
 
   // This component doesn't render anything
   return null;

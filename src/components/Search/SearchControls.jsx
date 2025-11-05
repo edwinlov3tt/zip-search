@@ -56,7 +56,9 @@ const SearchControls = ({
     prevIsLoadingRef.current = isLoading;
   }, [isLoading, searchPerformed, searchMode, selectedState, selectedCounty, selectedCity, setIsSearchPanelCollapsed]);
 
-  const panelContainerClasses = `absolute top-4 left-1/2 z-[1000] transition-all duration-300 ease-out`;
+  const panelContainerClasses = `absolute top-4 left-1/2 z-[1000] transition-all duration-300 ease-out ${
+    isSearchPanelCollapsed ? 'pointer-events-none' : 'pointer-events-auto'
+  }`;
   const panelClasses = `rounded-xl shadow-lg border p-3 w-[calc(100%-2rem)] max-w-[95vw] sm:w-[530px] sm:max-w-[530px] lg:max-w-[33vw] flex flex-col items-center ${
     isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'
   }`;
@@ -64,7 +66,7 @@ const SearchControls = ({
     ? 'opacity-0 pointer-events-none -translate-y-[calc(100%+16px)] scale-95'
     : 'opacity-100 pointer-events-auto translate-y-0 scale-100';
 
-  const buttonBaseClasses = `absolute left-1/2 transform -translate-x-1/2 rounded-full shadow-lg border h-9 w-9 flex items-center justify-center transition-all duration-300 ease-out ${
+  const buttonBaseClasses = `absolute left-1/2 transform -translate-x-1/2 rounded-full shadow-lg border h-9 w-9 flex items-center justify-center transition-all duration-300 ease-out pointer-events-auto ${
     isDarkMode ? 'bg-gray-800 border-gray-600 text-gray-200' : 'bg-white border-gray-200 text-gray-600'
   } hover:bg-red-500 hover:text-white`;
 
