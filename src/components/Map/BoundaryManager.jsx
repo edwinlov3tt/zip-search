@@ -354,7 +354,7 @@ const BoundaryManager = () => {
     } else {
       setZipBoundariesData(null);
     }
-  }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, loadZipBoundariesForResults, setZipBoundariesData]);
+  }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, setZipBoundariesData]);
 
   // Effect: Load city boundaries when toggled on or when city results change
   useEffect(() => {
@@ -364,7 +364,7 @@ const BoundaryManager = () => {
       setCityBoundariesData(null);
       lastCityKeysRef.current = ''; // Reset so it loads next time
     }
-  }, [showCityBoundaries, cityResults, loadCityBoundariesForResults, setCityBoundariesData]);
+  }, [showCityBoundaries, cityResults, setCityBoundariesData]);
 
   // Effect: Load VTD boundaries when toggled on or when results change
   useEffect(() => {
@@ -374,7 +374,7 @@ const BoundaryManager = () => {
       setVtdBoundariesData(null);
       lastVtdStatesRef.current = ''; // Reset so it loads next time
     }
-  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, loadVtdBoundariesForResults, setVtdBoundariesData]);
+  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, setVtdBoundariesData]);
 
   // This component doesn't render anything
   return null;

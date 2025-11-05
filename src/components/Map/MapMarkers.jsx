@@ -152,7 +152,7 @@ const MapMarkers = ({
             <Popup>
               <div>
                 {result.businessName && <><strong>{result.businessName}</strong><br/></>}
-                <div className="text-sm">{result.fullAddress || `${result.street || ''}, ${result.city || ''}, ${result.state || ''} ${result.zip || ''}`}</div>
+                <div className="text-sm">{result.fullAddress || `${result.address || ''}, ${result.city || ''}, ${result.state || ''} ${result.zip || ''}`}</div>
                 {result.lat && result.lng && (
                   <div className="text-xs text-gray-500 mt-1">
                     Lat: {result.lat.toFixed(6)}, Lng: {result.lng.toFixed(6)}

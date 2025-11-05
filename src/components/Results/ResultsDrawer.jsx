@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import DrawerHeader from './DrawerHeader';
 import DrawerContent from './DrawerContent';
 import { useUI } from '../../contexts/UIContext';
@@ -33,6 +33,16 @@ const ResultsDrawer = ({
   } = useUI();
 
   const { searchPerformed } = useSearch();
+  const [hasRendered, setHasRendered] = useState(false);
+
+  // Allow transition only after first render to prevent glitch
+  useEffect(() => {
+    // Delay enabling transitions to prevent initial mount animation glitch
+    const timer = setTimeout(() => {
+      setHasRendered(true);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Don't show drawer if no search performed or no results
   if (!searchPerformed || (
@@ -52,7 +62,7 @@ const ResultsDrawer = ({
       style={{
         height: getDrawerHeight(),
         zIndex: drawerState === 'full' ? 1001 : 1000,
-        transition: isResizing ? 'none' : 'height 300ms ease-in-out'
+        transition: isResizing ? 'none' : (hasRendered ? 'height 300ms ease-in-out' : 'none')
       }}
     >
       <DrawerHeader
