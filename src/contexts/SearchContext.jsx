@@ -506,10 +506,16 @@ export const SearchProvider = ({ children }) => {
     setActiveAddressSearchId(id);
     setSearchPerformed(true);
 
-    // Store results
+    // Store results with searchIds and searchSequences tags (CRITICAL FIX)
+    const resultsWithMeta = (results || []).map(result => ({
+      ...result,
+      searchIds: [id],
+      searchSequences: [sequence]
+    }));
+
     setSearchResultsById(prev => ({
       ...prev,
-      [id]: results || []
+      [id]: resultsWithMeta
     }));
 
     return newEntry;
@@ -2079,16 +2085,16 @@ export const SearchProvider = ({ children }) => {
 
         const searchResult = await ZipCodeService.search(searchParams);
         const normalizedResults = normalizeZipResults(searchResult?.results);
-        setZipResults(normalizedResults);
-        setTotalResults(typeof searchResult?.total === 'number' ? searchResult.total : normalizedResults.length);
-        setHasMoreResults(Boolean(searchResult?.hasMore));
-        setCurrentPage(0);
-        updateAggregatedResults(normalizedResults);
 
-        // Add to radius search history
+        // Calculate sequence number and create search entry (matching map click pattern)
+        const signature = buildRadiusSignature(finalLocation.lat, finalLocation.lng, radius);
+        const filteredSearches = radiusSearches.filter(existing => existing.signature !== signature);
+        const sequence = getNextSequenceNumber(filteredSearches);
+
         const displayName = finalLocation.displayName || finalLocation.display_name;
-        const entry = {
-          id: generateRadiusSearchId(),
+        const newEntryId = generateRadiusSearchId();
+        const baseEntry = {
+          id: newEntryId,
           label: displayName || `${finalLocation.lat.toFixed(3)}, ${finalLocation.lng.toFixed(3)} (${radius}m)`,
           radius: radius,
           center: [finalLocation.lat, finalLocation.lng],
@@ -2101,21 +2107,54 @@ export const SearchProvider = ({ children }) => {
           settings: createRadiusSettings(),
           searchParams: searchParams,
           selectedLocation: finalLocation,
-          signature: buildRadiusSignature(finalLocation.lat, finalLocation.lng, radius),
-          timestamp: Date.now()
+          signature,
+          timestamp: Date.now(),
+          resultsCount: normalizedResults.length,
+          sequence
         };
 
-        setRadiusSearches(prev => {
-          const filtered = prev.filter(existing => existing.signature !== entry.signature);
-          const next = [entry, ...filtered];
-          if (next.length > MAX_RADIUS_HISTORY) {
-            next.length = MAX_RADIUS_HISTORY;
-          }
-          return next;
-        });
+        const nextRadiusSearches = [baseEntry, ...filteredSearches].slice(0, MAX_RADIUS_HISTORY);
 
+        setRadiusSearches(nextRadiusSearches);
+        setExcludedSearchIds(prev => prev.filter(entryId => nextRadiusSearches.some(item => item.id === entryId)));
+
+        const entry = nextRadiusSearches.find(item => item.id === newEntryId) || baseEntry;
+
+        // Tag results with searchIds and searchSequences (CRITICAL FIX)
+        const resultsWithMeta = normalizedResults.map(result => ({
+          ...result,
+          searchIds: [entry.id],
+          searchSequences: [entry.sequence]
+        }));
+
+        // Store results in searchResultsById tracking system
+        const overrideMap = (() => {
+          const next = { ...searchResultsById };
+          filteredSearches.forEach(existing => {
+            if (existing.signature === signature) {
+              delete next[existing.id];
+            }
+          });
+          next[entry.id] = resultsWithMeta;
+          const allowedIds = new Set(nextRadiusSearches.map(item => item.id));
+          Object.keys(next).forEach(key => {
+            if (!allowedIds.has(key)) {
+              delete next[key];
+            }
+          });
+          return next;
+        })();
+
+        setSearchResultsById(overrideMap);
         setActiveRadiusSearchId(entry.id);
         setRadiusDisplaySettings(createRadiusSettings(entry.settings));
+
+        // Use rebuildDisplayedResults instead of direct setZipResults
+        rebuildDisplayedResults(overrideMap, entry.id, nextRadiusSearches);
+
+        setTotalResults(typeof searchResult?.total === 'number' ? searchResult.total : normalizedResults.length);
+        setHasMoreResults(Boolean(searchResult?.hasMore));
+        setCurrentPage(0);
 
       } catch (error) {
         console.error('Autocomplete search failed:', error);
