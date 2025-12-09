@@ -149,3 +149,36 @@ MapContext (Visualization)
 - This CLAUDE.md file
 - Component-level JSDoc comments
 - README.md for user-facing changes
+
+## Roadmap Updates
+
+When completing significant features, bug fixes, or improvements, post an update to the project roadmap.
+
+### API Details
+- **Base URL**: `https://feedback.edwinlovett.com/roadmap/api/v1`
+- **Project Name**: `GeoSearch Pro`
+- **Auth Header**: `Authorization: Bearer a4b494fc27a887b52ba11a5c72ac7446ffbc6bd1a9a6815941839edbb709d13e`
+
+### Posting Updates
+```bash
+curl -X POST "https://feedback.edwinlovett.com/roadmap/api/v1/projects/GeoSearch%20Pro/updates" \
+  -H "Authorization: Bearer a4b494fc27a887b52ba11a5c72ac7446ffbc6bd1a9a6815941839edbb709d13e" \
+  -H "Content-Type: application/json" \
+  -d '{"notes": "Your update here", "status": "Completed"}'
+```
+
+### Status Options
+- `Completed` - Feature shipped and working
+- `In Progress` - Currently being developed
+- `Testing` - In QA/testing phase
+- `On Hold` - Paused or blocked
+
+### Writing Guidelines
+- Write in simple, non-technical English
+- Focus on WHAT changed and WHY it matters to users
+- Use action verbs: Added, Fixed, Improved, Updated, Removed, Integrated
+- Template: `[verb] [action] [user benefit]`
+
+### When to Post Updates
+✅ Post for: New features, bug fixes, significant refactors, service integrations, performance improvements
+❌ Skip for: Minor edits, config changes, internal refactoring with no user impact

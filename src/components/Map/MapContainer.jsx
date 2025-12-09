@@ -60,7 +60,7 @@ const MapContainer = ({
     setZipResults
   } = useResults();
 
-  const { addressSearches, activeAddressSearchId } = useSearch();
+  const { addressSearches, activeAddressSearchId, removeRadiusSearch } = useSearch();
 
   const { activeTab, setActiveTab } = useUI();
 
@@ -138,6 +138,7 @@ const MapContainer = ({
         activeRadiusSearchId={activeRadiusSearchId}
         addressSearches={addressSearches}
         activeAddressSearchId={activeAddressSearchId}
+        removeRadiusSearch={removeRadiusSearch}
       />
 
       {/* Boundary Layers */}

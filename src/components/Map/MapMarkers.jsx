@@ -22,7 +22,8 @@ const MapMarkers = ({
   radiusSearches = [],
   activeRadiusSearchId = null,
   addressSearches = [],
-  activeAddressSearchId = null
+  activeAddressSearchId = null,
+  removeRadiusSearch = null
 }) => {
   // Get markersRef from ResultsContext to allow popup control
   const { markersRef } = useResults();
@@ -324,6 +325,17 @@ const MapMarkers = ({
                     <p className="text-xs text-gray-400 mt-1">
                       {new Date(search.timestamp).toLocaleString()}
                     </p>
+                    {removeRadiusSearch && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeRadiusSearch(search.id);
+                        }}
+                        className="mt-2 w-full px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded transition-colors"
+                      >
+                        Remove Search
+                      </button>
+                    )}
                   </div>
                 </Popup>
               </Marker>

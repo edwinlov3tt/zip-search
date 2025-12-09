@@ -2010,6 +2010,14 @@ export const SearchProvider = ({ children }) => {
       return; // Exit early - don't trigger any search
     }
 
+    // Check if we're in Polygon search mode - exit early (just zoom to location)
+    if (searchMode === 'polygon') {
+      // Just center the map, don't trigger any search
+      // User will draw polygon manually after centering
+      setApiError(null);
+      return; // Exit early - don't trigger any search
+    }
+
     if (searchMode === 'address' && addressSubMode === 'radius') {
       // Radius mode: Trigger Address Search
       setIsLoading(true);
