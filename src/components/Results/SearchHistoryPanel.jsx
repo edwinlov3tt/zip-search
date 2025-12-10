@@ -1,24 +1,28 @@
-import React, { useState } from 'react';
-import { MapPin, Eye, EyeOff, Trash2, Target, Map, Grid3X3, Maximize, Copy, FileDown, ChevronDown } from 'lucide-react';
-import { useSearch } from '../../contexts/SearchContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapPin, Eye, EyeOff, Trash2, Target, Map, Grid3X3, Maximize, Copy, FileDown, ChevronDown, Palette, Users, Loader2 } from 'lucide-react';
+import { useSearch, SEARCH_COLOR_PALETTE } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
 import { useMap } from '../../contexts/MapContext';
 import { useResults } from '../../contexts/ResultsContext';
+import zipBoundariesService from '../../services/zipBoundariesService';
 
 const SearchHistoryPanel = () => {
   const {
     radiusSearches,
     activeRadiusSearchId,
+    setActiveRadiusSearchId,
     removeRadiusSearch,
     updateRadiusSearchSettings,
     executeRadiusSearchFromHistory,
     addressSearches,
     activeAddressSearchId,
+    setActiveAddressSearchId,
     removeAddressSearch,
     updateAddressSearchSettings,
     executeAddressSearchFromHistory,
     polygonSearches,
     activePolygonSearchId,
+    setActivePolygonSearchId,
     removePolygonSearch,
     updatePolygonSearchSettings,
     executePolygonSearchFromHistory,
@@ -28,33 +32,141 @@ const SearchHistoryPanel = () => {
   } = useSearch();
 
   const { isDarkMode, showToast } = useUI();
-  const { setMapCenter, setMapZoom, setShowZipBoundaries } = useMap();
+  const { setMapCenter, setMapZoom, setShowZipBoundaries, zipBoundariesData, setNeighboringZips, loadingNeighbors, setLoadingNeighbors } = useMap();
   const { zipResults, cityResults, countyResults, stateResults, addressResults } = useResults();
 
   // State for managing dropdowns
   const [activeDropdown, setActiveDropdown] = useState(null);
-  const [dropdownType, setDropdownType] = useState(null); // 'copy' or 'export'
+  const [dropdownType, setDropdownType] = useState(null); // 'copy', 'export', or 'color'
+  const dropdownRef = useRef(null);
 
-  const handleFocusSearch = async (search) => {
-    // Execute the search and center map on it
-    const result = await executeRadiusSearchFromHistory(search.id);
-    if (result?.entry?.center) {
-      setMapCenter(result.entry.center);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!activeDropdown) return;
+
+    const handleClickOutside = (event) => {
+      // Check if click is inside any dropdown (using data attribute)
+      const clickedDropdown = event.target.closest('[data-dropdown]');
+      const clickedDropdownTrigger = event.target.closest('[data-dropdown-trigger]');
+
+      // If clicked outside both dropdown and trigger, close the dropdown
+      if (!clickedDropdown && !clickedDropdownTrigger) {
+        setActiveDropdown(null);
+        setDropdownType(null);
+      }
+    };
+
+    // Add listener after a small delay to avoid closing immediately on the same click
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeDropdown]);
+
+  const handleFocusSearch = (search) => {
+    // Just focus on the search (center map, set active) without re-executing
+    // This is a lightweight operation - no API call needed
+    setActiveRadiusSearchId(search.id);
+    if (search.center) {
+      setMapCenter(search.center);
       // Calculate appropriate zoom based on radius
       const zoomLevel = search.radius <= 5 ? 12 : search.radius <= 10 ? 11 : search.radius <= 20 ? 10 : 9;
       setMapZoom(zoomLevel);
     }
   };
 
-  const handleFocusAddressSearch = async (search) => {
-    // Execute the address search and center map on it
-    const result = await executeAddressSearchFromHistory(search.id);
-    if (result?.entry?.center) {
-      setMapCenter(result.entry.center);
+  // Find neighboring ZIPs that border the ZIPs in this search
+  const handleFindNeighbors = async (search, e) => {
+    if (e) e.stopPropagation();
+
+    // Get ZIPs from this search's results
+    // First check if results are stored directly on the search (polygon mode)
+    // Otherwise look for searchIds in zipResults (radius mode)
+    let searchZips = [];
+
+    if (search.results && search.results.length > 0) {
+      // Polygon search - results stored on search entry
+      searchZips = search.results;
+    } else {
+      // Radius/other search - results tagged with searchIds in zipResults
+      searchZips = (zipResults || []).filter(zip =>
+        zip.searchIds && zip.searchIds.includes(search.id)
+      );
+    }
+
+    // Also try to get from the general zipResults if no results found yet
+    if (searchZips.length === 0 && zipResults && zipResults.length > 0) {
+      // For polygon mode, all current zipResults belong to the current polygon search
+      searchZips = zipResults;
+    }
+
+    if (searchZips.length === 0) {
+      showToast('No ZIP codes in this search to find neighbors for', 'warning');
+      return;
+    }
+
+    // Get existing ZIP codes to exclude from neighbor results
+    const existingZipCodes = (zipResults || []).map(z => z.zipCode);
+
+    // Need boundary data for the search ZIPs
+    if (!zipBoundariesData || !zipBoundariesData.features) {
+      showToast('ZIP boundaries not loaded. Enable ZIP boundaries first.', 'warning');
+      setShowZipBoundaries(true);
+      return;
+    }
+
+    // Get boundary features for ZIPs in this search
+    const searchZipCodes = new Set(searchZips.map(z => z.zipCode));
+    const boundaryFeatures = zipBoundariesData.features.filter(f =>
+      searchZipCodes.has(f.properties?.zipcode || f.properties?.ZCTA5)
+    );
+
+    if (boundaryFeatures.length === 0) {
+      showToast('No boundary data found for search ZIPs', 'warning');
+      return;
+    }
+
+    setLoadingNeighbors(true);
+
+    try {
+      const neighbors = await zipBoundariesService.findNeighboringZips(
+        boundaryFeatures,
+        existingZipCodes
+      );
+
+      if (neighbors && neighbors.features && neighbors.features.length > 0) {
+        setNeighboringZips(neighbors);
+        showToast(`Found ${neighbors.features.length} neighboring ZIP codes`, 'success');
+      } else {
+        showToast('No neighboring ZIPs found', 'info');
+      }
+    } catch (error) {
+      console.error('Error finding neighbors:', error);
+      showToast('Failed to find neighboring ZIPs', 'error');
+    } finally {
+      setLoadingNeighbors(false);
+    }
+  };
+
+  const handleFocusAddressSearch = (search) => {
+    // Just focus on the address search (center map, set active) without re-executing
+    setActiveAddressSearchId(search.id);
+    if (search.center) {
+      setMapCenter(search.center);
       // Calculate appropriate zoom based on radius
       const zoomLevel = search.radius <= 5 ? 13 : search.radius <= 10 ? 12 : 11;
       setMapZoom(zoomLevel);
     }
+  };
+
+  const handleFocusPolygonSearch = (search) => {
+    // Just focus on the polygon search (set active) without re-executing
+    setActivePolygonSearchId(search.id);
+    // Polygon searches don't have a single center point, so we don't move the map
   };
 
   const handleToggleSetting = (search, setting) => {
@@ -67,6 +179,27 @@ const SearchHistoryPanel = () => {
     if (search.id === activeRadiusSearchId && setting === 'showZipBorders') {
       setShowZipBoundaries(!search.settings?.showZipBorders);
     }
+  };
+
+  const handleColorChange = (search, color) => {
+    if (isAddressMode) {
+      updateAddressSearchSettings(search.id, (prevSettings) => ({
+        ...prevSettings,
+        overlayColor: color
+      }));
+    } else if (isPolygonMode) {
+      updatePolygonSearchSettings(search.id, (prevSettings) => ({
+        ...prevSettings,
+        overlayColor: color
+      }));
+    } else {
+      updateRadiusSearchSettings(search.id, (prevSettings) => ({
+        ...prevSettings,
+        overlayColor: color
+      }));
+    }
+    setActiveDropdown(null);
+    setDropdownType(null);
   };
 
   const handleFitAllSearches = () => {
@@ -298,7 +431,7 @@ const SearchHistoryPanel = () => {
                 isAddressMode
                   ? handleFocusAddressSearch(search)
                   : isPolygonMode
-                    ? executePolygonSearchFromHistory(search.id)
+                    ? handleFocusPolygonSearch(search)
                     : handleFocusSearch(search)
               }
               role="button"
@@ -309,26 +442,70 @@ const SearchHistoryPanel = () => {
                   isAddressMode
                     ? handleFocusAddressSearch(search)
                     : isPolygonMode
-                      ? executePolygonSearchFromHistory(search.id)
+                      ? handleFocusPolygonSearch(search)
                       : handleFocusSearch(search);
                 }
               }}
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-start gap-3 flex-1">
-                  <span
-                    className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md text-xs font-semibold ${
-                      isExcluded
-                        ? 'bg-gray-500 text-white'
-                        : isActive
-                          ? 'bg-red-600 text-white'
-                          : isDarkMode
-                            ? 'bg-gray-600 text-gray-100'
-                            : 'bg-gray-200 text-gray-800'
-                    }`}
-                  >
-                    {searchNumber}
-                  </span>
+                  {/* Color picker and sequence number */}
+                  <div className="relative">
+                    <button
+                      data-dropdown-trigger
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (activeDropdown === search.id && dropdownType === 'color') {
+                          setActiveDropdown(null);
+                          setDropdownType(null);
+                        } else {
+                          setActiveDropdown(search.id);
+                          setDropdownType('color');
+                        }
+                      }}
+                      className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md text-xs font-semibold transition-all hover:ring-2 hover:ring-offset-1 ${
+                        isDarkMode ? 'hover:ring-gray-400' : 'hover:ring-gray-300'
+                      }`}
+                      style={{
+                        backgroundColor: isExcluded ? '#6b7280' : (settings.overlayColor || '#dc2626'),
+                        color: 'white'
+                      }}
+                      title="Change overlay color"
+                    >
+                      {searchNumber}
+                    </button>
+
+                    {/* Color picker dropdown */}
+                    {activeDropdown === search.id && dropdownType === 'color' && (
+                      <div
+                        data-dropdown
+                        className={`absolute left-0 top-full mt-2 z-[100] p-2 rounded-lg shadow-xl ${
+                          isDarkMode ? 'bg-gray-700 border border-gray-600' : 'bg-white border border-gray-200'
+                        }`}
+                        style={{ minWidth: '148px' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="grid grid-cols-5 gap-1.5" style={{ width: 'fit-content' }}>
+                          {SEARCH_COLOR_PALETTE.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                handleColorChange(search, color);
+                              }}
+                              className={`w-6 h-6 rounded-md transition-transform hover:scale-110 cursor-pointer ${
+                                settings.overlayColor === color ? 'ring-2 ring-offset-1 ring-gray-400' : ''
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex-1">
                     <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                       {search.label}
@@ -485,7 +662,13 @@ const SearchHistoryPanel = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      isAddressMode ? removeAddressSearch(search.id) : removeRadiusSearch(search.id);
+                      if (isAddressMode) {
+                        removeAddressSearch(search.id);
+                      } else if (isPolygonMode) {
+                        removePolygonSearch(search.id);
+                      } else {
+                        removeRadiusSearch(search.id);
+                      }
                     }}
                     className={`p-1.5 rounded transition-colors ${
                       isDarkMode
@@ -504,7 +687,13 @@ const SearchHistoryPanel = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleFocusSearch(search);
+                    if (isAddressMode) {
+                      handleFocusAddressSearch(search);
+                    } else if (isPolygonMode) {
+                      handleFocusPolygonSearch(search);
+                    } else {
+                      handleFocusSearch(search);
+                    }
                   }}
                   className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
                     isActive
@@ -551,7 +740,28 @@ const SearchHistoryPanel = () => {
                   Radius
                 </button>
 
-                {/* Removed Markers and ZIP Borders toggles - Markers can't be filtered per-search without searchIds, ZIP Borders feature is disabled */}
+                {/* Find Neighbors button - show for radius and polygon searches */}
+                {!isAddressMode && (
+                  <button
+                    onClick={(e) => handleFindNeighbors(search, e)}
+                    disabled={loadingNeighbors}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors ${
+                      loadingNeighbors
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isDarkMode
+                          ? 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                    title="Find ZIPs that border this search's results"
+                  >
+                    {loadingNeighbors ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Users className="h-3.5 w-3.5" />
+                    )}
+                    Neighbors
+                  </button>
+                )}
               </div>
 
               {/* Search info */}

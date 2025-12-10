@@ -11,10 +11,25 @@ import { useUI } from './UIContext';
 
 const SearchContext = createContext();
 
+// Color palette for search overlays (10 distinct, visually-tested colors)
+export const SEARCH_COLOR_PALETTE = [
+  '#dc2626', // red
+  '#2563eb', // blue
+  '#16a34a', // green
+  '#9333ea', // purple
+  '#ea580c', // orange
+  '#0891b2', // cyan
+  '#c026d3', // fuchsia
+  '#ca8a04', // yellow
+  '#4f46e5', // indigo
+  '#059669', // emerald
+];
+
 const DEFAULT_RADIUS_DISPLAY_SETTINGS = {
   showRadius: true,
   showMarkers: true,
-  showZipBorders: false
+  showZipBorders: false,
+  overlayColor: null // null = auto-assign from palette based on sequence
 };
 
 const MAX_RADIUS_HISTORY = 6;
@@ -663,7 +678,7 @@ export const SearchProvider = ({ children }) => {
             city: normalizedResults[0]?.city || null,
             state: normalizedResults[0]?.state || null
           },
-          settings: createRadiusSettings(),
+          settings: createRadiusSettings({ overlayColor: SEARCH_COLOR_PALETTE[sequence % SEARCH_COLOR_PALETTE.length] }),
           searchParams: searchParams,
           selectedLocation: null,
           signature,
@@ -885,10 +900,23 @@ export const SearchProvider = ({ children }) => {
     return number;
   }, [polygonSearches]);
 
-  const addPolygonSearch = useCallback((shape, bounds) => {
+  const addPolygonSearch = useCallback((shape, bounds, extraData = {}) => {
     const id = Date.now().toString();
     const shapeNumber = getNextShapeNumber();
     const label = `Shape ${shapeNumber}`;
+
+    // Get sequence number for color assignment (shapeNumber - 1 since shapeNumber starts at 1)
+    const colorIndex = (shapeNumber - 1) % SEARCH_COLOR_PALETTE.length;
+    const overlayColor = SEARCH_COLOR_PALETTE[colorIndex];
+
+    // Update the shape layer's style with the assigned color
+    if (shape?.layer?.setStyle) {
+      shape.layer.setStyle({
+        color: overlayColor,
+        fillColor: overlayColor,
+        fillOpacity: 0.15
+      });
+    }
 
     const newSearch = {
       id,
@@ -896,8 +924,19 @@ export const SearchProvider = ({ children }) => {
       shapeNumber,
       shape,
       bounds,
+      // Store coordinates and shape type for sharing/restoration
+      coordinates: extraData.coordinates || [],
+      shapeType: extraData.shapeType || 'polygon',
+      circleCenter: extraData.circleCenter || null,
+      circleRadius: extraData.circleRadius || null,
+      // Store results directly on the search entry for sharing
+      results: extraData.results || [],
+      resultsCount: extraData.results?.length || 0,
       timestamp: Date.now(),
-      settings: { ...polygonDisplaySettings }
+      settings: {
+        ...polygonDisplaySettings,
+        overlayColor
+      }
     };
 
     setPolygonSearches(prev => [...prev, newSearch]);
@@ -941,11 +980,23 @@ export const SearchProvider = ({ children }) => {
   }, [polygonSearches, removePolygonSearch]);
 
   const updatePolygonSearchSettings = useCallback((id, updateFn) => {
-    setPolygonSearches(prev => prev.map(search =>
-      search.id === id
-        ? { ...search, settings: updateFn(search.settings || {}) }
-        : search
-    ));
+    setPolygonSearches(prev => prev.map(search => {
+      if (search.id === id) {
+        const newSettings = updateFn(search.settings || {});
+
+        // Update the shape layer's style if overlayColor changed
+        if (newSettings.overlayColor && search.shape?.layer?.setStyle) {
+          search.shape.layer.setStyle({
+            color: newSettings.overlayColor,
+            fillColor: newSettings.overlayColor,
+            fillOpacity: 0.15
+          });
+        }
+
+        return { ...search, settings: newSettings };
+      }
+      return search;
+    }));
   }, []);
 
   const executePolygonSearchFromHistory = useCallback(async (searchId) => {
@@ -1142,8 +1193,23 @@ export const SearchProvider = ({ children }) => {
           maxLng: Math.max(...coords.map(c => c.lng))
         };
 
-        // Store the shape in history with bounds
-        const newEntry = addPolygonSearch(shape, bounds);
+        // Get circle-specific data if applicable
+        let circleCenter = null;
+        let circleRadius = null;
+        if (shape.type === 'circle') {
+          const center = shape.layer.getLatLng();
+          circleCenter = [center.lat, center.lng];
+          circleRadius = shape.layer.getRadius();
+        }
+
+        // Store the shape in history with bounds, coordinates, and results
+        const newEntry = addPolygonSearch(shape, bounds, {
+          coordinates: coords,
+          shapeType: shape.type || 'polygon',
+          circleCenter,
+          circleRadius,
+          results: normalizedResults
+        });
         return newEntry;
       }
 
@@ -1468,7 +1534,13 @@ export const SearchProvider = ({ children }) => {
   }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed, setMapType, previousMapType]);
 
   useEffect(() => {
+    // Skip if no results or no searches
     if (Object.keys(searchResultsById).length === 0) return;
+    if (radiusSearches.length === 0) return;
+
+    // Skip if we don't have a valid activeId and not in combine mode
+    if (!combineSearchResults && !activeRadiusSearchId) return;
+
     rebuildDisplayedResults();
   }, [combineSearchResults, excludedSearchIds, searchResultsById, radiusSearches, activeRadiusSearchId, rebuildDisplayedResults]);
 
@@ -1676,7 +1748,7 @@ export const SearchProvider = ({ children }) => {
             center: latValue != null && lngValue != null ? [Number(latValue), Number(lngValue)] : null,
             query: effectiveSearchTerm || null,
             summary: { zip, city, state },
-            settings: createRadiusSettings(),
+            settings: createRadiusSettings({ overlayColor: SEARCH_COLOR_PALETTE[sequence % SEARCH_COLOR_PALETTE.length] }),
             searchParams: { ...searchParams, mode: 'radius' },
             selectedLocation: selectedLocation ? { ...selectedLocation } : null,
             signature,
@@ -1876,6 +1948,281 @@ export const SearchProvider = ({ children }) => {
   }, []);
 
   const isSearchExcluded = useCallback((id) => excludedSearchIds.includes(id), [excludedSearchIds]);
+
+  // Restore searches from shared state (for share URL feature)
+  // Returns boundary settings for the caller to apply
+  const restoreFromShareState = useCallback(async (sharedState) => {
+    if (!sharedState) return null;
+
+    console.log('[Share] Restoring from shared state:', sharedState);
+
+    // Set the search mode
+    if (sharedState.mode) {
+      setSearchMode(sharedState.mode);
+    }
+
+    // Set map view
+    if (sharedState.mapView) {
+      if (sharedState.mapView.center) {
+        setMapCenter(sharedState.mapView.center);
+      }
+      if (sharedState.mapView.zoom) {
+        setMapZoom(sharedState.mapView.zoom);
+      }
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Restore radius searches
+      if (sharedState.radiusSearches && sharedState.radiusSearches.length > 0) {
+        console.log('[Share] Restoring', sharedState.radiusSearches.length, 'radius searches');
+
+        const newSearches = [];
+        const newResultsById = {};
+
+        for (let i = 0; i < sharedState.radiusSearches.length; i++) {
+          const savedSearch = sharedState.radiusSearches[i];
+          if (savedSearch.center && savedSearch.radius) {
+            try {
+              let normalizedResults;
+
+              // Check if we have stored results (new API format)
+              if (savedSearch.results && savedSearch.results.length > 0) {
+                console.log('[Share] Using stored results for radius search');
+                normalizedResults = normalizeZipResults(savedSearch.results);
+              } else {
+                // Fall back to re-executing search (legacy format)
+                console.log('[Share] Re-executing radius search (no stored results)');
+                const searchParams = {
+                  lat: savedSearch.center[0],
+                  lng: savedSearch.center[1],
+                  radius: savedSearch.radius,
+                  limit: 500,
+                  offset: 0
+                };
+                const searchResult = await ZipCodeService.search(searchParams);
+                normalizedResults = normalizeZipResults(searchResult?.results);
+              }
+
+              // Create search entry
+              const signature = buildRadiusSignature(savedSearch.center[0], savedSearch.center[1], savedSearch.radius);
+              const newEntryId = savedSearch.id || generateRadiusSearchId();
+              const sequence = i + 1;
+              const colorIndex = i % SEARCH_COLOR_PALETTE.length;
+
+              // Build label
+              const firstResult = normalizedResults?.[0] || null;
+              const zip = firstResult?.zipCode || firstResult?.zipcode || null;
+              const city = firstResult?.city || firstResult?.primary_city || null;
+              const state = firstResult?.state || firstResult?.stateCode || null;
+              const labelParts = [];
+              if (zip) labelParts.push(zip);
+              if (city && state) labelParts.push(`${city}, ${state}`);
+              const baseLabel = labelParts.length > 0 ? labelParts.join(' - ') : formatCenterFallback(savedSearch.center[0], savedSearch.center[1]);
+              const computedLabel = `${baseLabel} (${savedSearch.radius}m)`;
+
+              const entry = {
+                id: newEntryId,
+                label: savedSearch.label || computedLabel,
+                radius: savedSearch.radius,
+                center: savedSearch.center,
+                query: savedSearch.query || null,
+                summary: { zip, city, state },
+                settings: createRadiusSettings({
+                  overlayColor: savedSearch.overlayColor || savedSearch.settings?.overlayColor || SEARCH_COLOR_PALETTE[colorIndex]
+                }),
+                searchParams: { lat: savedSearch.center[0], lng: savedSearch.center[1], radius: savedSearch.radius, mode: 'radius' },
+                signature,
+                timestamp: Date.now(),
+                resultsCount: normalizedResults.length,
+                sequence
+              };
+
+              // Tag results with search info
+              const resultsWithMeta = normalizedResults.map(result => ({
+                ...result,
+                searchIds: [newEntryId],
+                searchSequences: [sequence]
+              }));
+
+              newSearches.push(entry);
+              newResultsById[newEntryId] = resultsWithMeta;
+            } catch (error) {
+              console.error('[Share] Error restoring radius search:', error);
+            }
+          }
+        }
+
+        // Batch update all state at once
+        if (newSearches.length > 0) {
+          setRadiusSearches(newSearches);
+          setSearchResultsById(newResultsById);
+          setActiveRadiusSearchId(newSearches[newSearches.length - 1].id);
+          setRadiusDisplaySettings(createRadiusSettings(newSearches[newSearches.length - 1].settings));
+          setIsSearchMode(false);
+          setSearchPerformed(true);
+          setDrawerState('half');
+          rebuildDisplayedResults(newResultsById, newSearches[newSearches.length - 1].id, newSearches);
+        }
+      }
+
+      // Restore polygon searches (shapes will be drawn by caller with access to featureGroupRef)
+      if (sharedState.polygonSearches && sharedState.polygonSearches.length > 0) {
+        console.log('[Share] Restoring', sharedState.polygonSearches.length, 'polygon searches');
+
+        const newPolygonSearches = [];
+
+        for (let i = 0; i < sharedState.polygonSearches.length; i++) {
+          const savedSearch = sharedState.polygonSearches[i];
+          if (savedSearch.coordinates && savedSearch.coordinates.length > 0) {
+            const newEntryId = savedSearch.id || Date.now().toString() + i;
+            const shapeNumber = savedSearch.shapeNumber || (i + 1);
+            const colorIndex = i % SEARCH_COLOR_PALETTE.length;
+
+            // Normalize results if stored
+            let results = [];
+            if (savedSearch.results && savedSearch.results.length > 0) {
+              results = normalizeZipResults(savedSearch.results);
+            }
+
+            const entry = {
+              id: newEntryId,
+              label: savedSearch.label || `Shape ${shapeNumber}`,
+              shapeNumber,
+              coordinates: savedSearch.coordinates,
+              shapeType: savedSearch.shapeType || 'polygon',
+              circleCenter: savedSearch.circleCenter,
+              circleRadius: savedSearch.circleRadius,
+              bounds: savedSearch.bounds,
+              results, // Store results directly on the search entry
+              timestamp: Date.now(),
+              settings: {
+                ...polygonDisplaySettings,
+                overlayColor: savedSearch.overlayColor || savedSearch.settings?.overlayColor || SEARCH_COLOR_PALETTE[colorIndex]
+              },
+              // Mark as needing shape creation (caller will handle)
+              needsShapeCreation: true
+            };
+
+            newPolygonSearches.push(entry);
+          }
+        }
+
+        if (newPolygonSearches.length > 0) {
+          setPolygonSearches(newPolygonSearches);
+          setActivePolygonSearchId(newPolygonSearches[newPolygonSearches.length - 1].id);
+          setIsSearchMode(false);
+          setSearchPerformed(true);
+          setDrawerState('half');
+
+          // Set ZIP results from the stored polygon results
+          const allZipResults = newPolygonSearches.flatMap(s => s.results || []);
+          if (allZipResults.length > 0) {
+            setZipResults(allZipResults);
+
+            // Calculate and set aggregated city/county/state results
+            const uniqueCities = [...new Set(allZipResults.map(zip =>
+              `${zip.city}|${zip.state}|${zip.county}`
+            ))].map((cityKey, index) => {
+              const [city, state, county] = cityKey.split('|');
+              const cityZips = allZipResults.filter(zip =>
+                zip.city === city && zip.state === state && zip.county === county
+              );
+              return {
+                id: `city-${index}`,
+                name: city,
+                state: state,
+                county: county,
+                zipCount: cityZips.length,
+                population: cityZips.reduce((sum, zip) => sum + (zip.population || 0), 0)
+              };
+            });
+
+            const uniqueCounties = [...new Set(allZipResults.map(zip =>
+              `${zip.county}|${zip.state}`
+            ))].map((countyKey, index) => {
+              const [county, state] = countyKey.split('|');
+              const countyZips = allZipResults.filter(zip =>
+                zip.county === county && zip.state === state
+              );
+              return {
+                id: `county-${index}`,
+                name: county,
+                state: state,
+                zipCount: countyZips.length,
+                cityCount: new Set(countyZips.map(z => z.city)).size,
+                population: countyZips.reduce((sum, zip) => sum + (zip.population || 0), 0)
+              };
+            });
+
+            const uniqueStates = [...new Set(allZipResults.map(zip => zip.state))].map((state, index) => {
+              const stateZips = allZipResults.filter(zip => zip.state === state);
+              return {
+                id: `state-${index}`,
+                name: state,
+                abbreviation: state,
+                zipCount: stateZips.length,
+                cityCount: new Set(stateZips.map(z => z.city)).size,
+                countyCount: new Set(stateZips.map(z => z.county)).size,
+                population: stateZips.reduce((sum, zip) => sum + (zip.population || 0), 0)
+              };
+            });
+
+            setCityResults(uniqueCities);
+            setCountyResults(uniqueCounties);
+            setStateResults(uniqueStates);
+          }
+        }
+      }
+
+      // Restore address searches
+      if (sharedState.addressSearches && sharedState.addressSearches.length > 0) {
+        console.log('[Share] Restoring', sharedState.addressSearches.length, 'address searches');
+
+        const newAddressSearches = [];
+
+        for (let i = 0; i < sharedState.addressSearches.length; i++) {
+          const savedSearch = sharedState.addressSearches[i];
+          const newEntryId = savedSearch.id || Date.now().toString() + i;
+          const colorIndex = i % SEARCH_COLOR_PALETTE.length;
+
+          const entry = {
+            id: newEntryId,
+            label: savedSearch.label,
+            mode: savedSearch.mode,
+            query: savedSearch.query,
+            center: savedSearch.center,
+            radius: savedSearch.radius,
+            coordinates: savedSearch.coordinates,
+            results: savedSearch.results || [],
+            timestamp: Date.now(),
+            settings: {
+              overlayColor: savedSearch.overlayColor || savedSearch.settings?.overlayColor || SEARCH_COLOR_PALETTE[colorIndex]
+            },
+            needsShapeCreation: savedSearch.mode === 'polygon'
+          };
+
+          newAddressSearches.push(entry);
+        }
+
+        if (newAddressSearches.length > 0) {
+          setAddressSearches(newAddressSearches);
+          setActiveAddressSearchId(newAddressSearches[newAddressSearches.length - 1].id);
+          setIsSearchMode(false);
+          setSearchPerformed(true);
+          setDrawerState('half');
+        }
+      }
+
+      console.log('[Share] Restoration complete');
+    } finally {
+      setIsLoading(false);
+    }
+
+    // Return boundary settings for caller to apply (requires MapContext access)
+    return sharedState.boundarySettings || null;
+  }, [setSearchMode, setMapCenter, setMapZoom, setIsLoading, setRadiusSearches, setSearchResultsById, setActiveRadiusSearchId, setRadiusDisplaySettings, setIsSearchMode, setSearchPerformed, setDrawerState, rebuildDisplayedResults, setPolygonSearches, setActivePolygonSearchId, setZipResults, polygonDisplaySettings, setAddressSearches, setActiveAddressSearchId]);
 
   // Input change handler with autocomplete
   const handleSearchInputChange = useCallback(async (e, uiContext) => {
@@ -2112,7 +2459,7 @@ export const SearchProvider = ({ children }) => {
             city: normalizedResults[0]?.city || null,
             state: normalizedResults[0]?.state || null
           },
-          settings: createRadiusSettings(),
+          settings: createRadiusSettings({ overlayColor: SEARCH_COLOR_PALETTE[sequence % SEARCH_COLOR_PALETTE.length] }),
           searchParams: searchParams,
           selectedLocation: finalLocation,
           signature,
@@ -3190,6 +3537,7 @@ export const SearchProvider = ({ children }) => {
     updateRadiusSearchSettings,
     removeRadiusSearch,
     executeRadiusSearchFromHistory,
+    restoreFromShareState,
     combineSearchResults,
     setCombineSearchResults,
     toggleSearchExclusion,

@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { MapProvider } from './contexts/MapContext';
 import { SearchProvider } from './contexts/SearchContext';
 import { ResultsProvider } from './contexts/ResultsContext';
 import { UIProvider } from './contexts/UIContext';
+import { ShareProvider } from './contexts/ShareContext';
 
 import Header from './components/Header/Header';
 import SearchControls from './components/Search/SearchControls';
@@ -14,11 +15,13 @@ import ToastNotification from './components/common/ToastNotification';
 import CustomExportModal from './components/Modals/CustomExportModal';
 import HeaderMappingModal from './components/Modals/HeaderMappingModal';
 import ModeSwitchModal from './components/Modals/ModeSwitchModal';
+import ShareModal from './components/Modals/ShareModal';
 
 import { useSearch } from './contexts/SearchContext';
 import { useMap } from './contexts/MapContext';
 import { useResults } from './contexts/ResultsContext';
 import { useUI } from './contexts/UIContext';
+import { useShare } from './contexts/ShareContext';
 
 /**
  * Main GeoApplication component that composes all features
@@ -74,8 +77,12 @@ const GeoApplicationContent = () => {
     pendingMode,
     handleClearAndSwitch,
     handleDownloadAndSwitch,
-    handleCancelModeSwitch
+    handleCancelModeSwitch,
+    restoreFromShareState
   } = useSearch();
+
+  // Get share state
+  const { sharedState, isSharedView } = useShare();
 
   const {
     mapCenter,
@@ -83,13 +90,18 @@ const GeoApplicationContent = () => {
     mapRef,
     featureGroupRef,
     drawnShapes,
+    setDrawnShapes,
     handleMapClick,
     handleViewportChange,
     onCreated,
     onDeleted,
     setMapClickCallback,
     setOnShapeCreatedCallback,
-    setOnShapeDeletedCallback
+    setOnShapeDeletedCallback,
+    setShowZipBoundaries,
+    setShowStateBoundaries,
+    setShowCityBoundaries,
+    setShowVtdBoundaries
   } = useMap();
 
   const {
@@ -125,6 +137,193 @@ const GeoApplicationContent = () => {
     exportSimpleCsv,
     activeTab
   } = useUI();
+
+  // Ref to prevent multiple restorations
+  const hasRestoredRef = useRef(false);
+
+  // Helper function to create polygon shapes on the map from share data
+  const createPolygonShapesFromShare = useCallback((polygonSearches) => {
+    // Check if Leaflet and featureGroup are ready
+    if (!window.L) {
+      console.warn('[Share] Leaflet not ready, retrying in 500ms...');
+      setTimeout(() => createPolygonShapesFromShare(polygonSearches), 500);
+      return;
+    }
+
+    if (!featureGroupRef.current) {
+      console.warn('[Share] featureGroupRef not ready, retrying in 500ms...');
+      setTimeout(() => createPolygonShapesFromShare(polygonSearches), 500);
+      return;
+    }
+
+    if (!polygonSearches || polygonSearches.length === 0) return;
+
+    console.log('[Share] Creating polygon shapes on map:', polygonSearches.length);
+    console.log('[Share] First polygon data:', JSON.stringify(polygonSearches[0], null, 2));
+
+    const newShapes = [];
+
+    polygonSearches.forEach((search, index) => {
+      if (!search.coordinates || search.coordinates.length === 0) {
+        console.warn('[Share] No coordinates for polygon:', search.id);
+        return;
+      }
+
+      try {
+        let layer;
+        const overlayColor = search.overlayColor || search.settings?.overlayColor || '#dc2626';
+        console.log('[Share] Creating shape with color:', overlayColor, 'coordinates count:', search.coordinates.length);
+
+        if (search.shapeType === 'circle' && search.circleCenter && search.circleRadius) {
+          // Create circle
+          console.log('[Share] Creating circle at:', search.circleCenter, 'radius:', search.circleRadius);
+          layer = window.L.circle(
+            [search.circleCenter[0], search.circleCenter[1]],
+            {
+              radius: search.circleRadius,
+              color: overlayColor,
+              fillColor: overlayColor,
+              fillOpacity: 0.15,
+              weight: 2
+            }
+          );
+        } else if (search.shapeType === 'rectangle' && search.bounds) {
+          // Create rectangle
+          console.log('[Share] Creating rectangle with bounds:', search.bounds);
+          layer = window.L.rectangle(
+            [
+              [search.bounds.minLat, search.bounds.minLng],
+              [search.bounds.maxLat, search.bounds.maxLng]
+            ],
+            {
+              color: overlayColor,
+              fillColor: overlayColor,
+              fillOpacity: 0.15,
+              weight: 2
+            }
+          );
+        } else {
+          // Create polygon from coordinates
+          const latLngs = search.coordinates.map(coord => [coord.lat, coord.lng]);
+          console.log('[Share] Creating polygon with latLngs:', latLngs.slice(0, 3), '...');
+          layer = window.L.polygon(latLngs, {
+            color: overlayColor,
+            fillColor: overlayColor,
+            fillOpacity: 0.15,
+            weight: 2
+          });
+        }
+
+        if (layer) {
+          // Add to feature group
+          featureGroupRef.current.addLayer(layer);
+          console.log('[Share] Layer added to featureGroup');
+
+          // Create shape object
+          const shapeObj = {
+            id: search.id || Date.now().toString() + index,
+            layer,
+            layerType: search.shapeType || 'polygon',
+            coordinates: search.coordinates
+          };
+
+          newShapes.push(shapeObj);
+        }
+      } catch (error) {
+        console.error('[Share] Error creating polygon shape:', error);
+      }
+    });
+
+    if (newShapes.length > 0) {
+      console.log('[Share] Setting', newShapes.length, 'shapes to drawnShapes');
+      setDrawnShapes(prev => [...prev, ...newShapes]);
+    }
+  }, [featureGroupRef, setDrawnShapes]);
+
+  // Restore searches from share URL on mount
+  useEffect(() => {
+    const restoreShare = async () => {
+      if (sharedState && isSharedView && !hasRestoredRef.current) {
+        hasRestoredRef.current = true;
+        console.log('[Share] Detected shared state, restoring searches...');
+
+        // Restore searches and get boundary settings back
+        const boundarySettings = await restoreFromShareState(sharedState);
+
+        // Apply boundary visibility settings
+        if (boundarySettings) {
+          if (boundarySettings.showZipBoundaries) setShowZipBoundaries(true);
+          if (boundarySettings.showStateBoundaries) setShowStateBoundaries(true);
+          if (boundarySettings.showCityBoundaries) setShowCityBoundaries(true);
+          if (boundarySettings.showVtdBoundaries) setShowVtdBoundaries(true);
+        }
+
+        // Create polygon shapes on the map after a short delay to ensure map is ready
+        if (sharedState.polygonSearches && sharedState.polygonSearches.length > 0) {
+          setTimeout(() => {
+            createPolygonShapesFromShare(sharedState.polygonSearches);
+          }, 500);
+        }
+
+        // Auto-zoom to fit the search results after a delay
+        setTimeout(() => {
+          zoomToShareResults(sharedState);
+        }, 800);
+      }
+    };
+
+    restoreShare();
+  }, [sharedState, isSharedView, restoreFromShareState, setShowZipBoundaries, setShowStateBoundaries, setShowCityBoundaries, setShowVtdBoundaries, createPolygonShapesFromShare]);
+
+  // Helper function to zoom map to fit shared search results
+  const zoomToShareResults = useCallback((sharedState) => {
+    if (!mapRef.current || !sharedState) return;
+
+    let bounds = null;
+
+    // Calculate bounds from polygon searches
+    if (sharedState.polygonSearches && sharedState.polygonSearches.length > 0) {
+      const allBounds = sharedState.polygonSearches
+        .filter(s => s.bounds)
+        .map(s => s.bounds);
+
+      if (allBounds.length > 0) {
+        bounds = window.L.latLngBounds(
+          [Math.min(...allBounds.map(b => b.minLat)), Math.min(...allBounds.map(b => b.minLng))],
+          [Math.max(...allBounds.map(b => b.maxLat)), Math.max(...allBounds.map(b => b.maxLng))]
+        );
+      }
+    }
+
+    // Calculate bounds from radius searches
+    if (sharedState.radiusSearches && sharedState.radiusSearches.length > 0) {
+      const radiusBounds = sharedState.radiusSearches.map(s => {
+        if (!s.center) return null;
+        // Convert miles to degrees (rough approximation)
+        const radiusDeg = (s.radius || 10) / 69; // ~69 miles per degree
+        return {
+          minLat: s.center[0] - radiusDeg,
+          maxLat: s.center[0] + radiusDeg,
+          minLng: s.center[1] - radiusDeg,
+          maxLng: s.center[1] + radiusDeg
+        };
+      }).filter(Boolean);
+
+      if (radiusBounds.length > 0) {
+        const newBounds = window.L.latLngBounds(
+          [Math.min(...radiusBounds.map(b => b.minLat)), Math.min(...radiusBounds.map(b => b.minLng))],
+          [Math.max(...radiusBounds.map(b => b.maxLat)), Math.max(...radiusBounds.map(b => b.maxLng))]
+        );
+        bounds = bounds ? bounds.extend(newBounds) : newBounds;
+      }
+    }
+
+    // Fit bounds with padding
+    if (bounds && bounds.isValid()) {
+      console.log('[Share] Zooming to fit bounds:', bounds);
+      mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
+  }, [mapRef]);
 
   // Wire up map click handler for radius search
   useEffect(() => {
@@ -321,6 +520,9 @@ const GeoApplicationContent = () => {
         toMode={pendingMode}
         isDarkMode={isDarkMode}
       />
+
+      {/* Share Modal */}
+      <ShareModal />
     </div>
   );
 };
@@ -335,7 +537,9 @@ const GeoApplicationNew = () => {
       <ResultsProvider>
         <MapProvider>
           <SearchProvider>
-            <GeoApplicationContent />
+            <ShareProvider>
+              <GeoApplicationContent />
+            </ShareProvider>
           </SearchProvider>
         </MapProvider>
       </ResultsProvider>

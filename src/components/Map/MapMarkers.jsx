@@ -3,6 +3,17 @@ import { Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { useResults } from '../../contexts/ResultsContext';
 
+// Helper function to darken a hex color for inactive state
+const darkenColor = (hex, percent = 30) => {
+  // Remove # if present
+  const color = hex.replace('#', '');
+  const num = parseInt(color, 16);
+  const r = Math.max(0, (num >> 16) - Math.round(255 * (percent / 100)));
+  const g = Math.max(0, ((num >> 8) & 0x00FF) - Math.round(255 * (percent / 100)));
+  const b = Math.max(0, (num & 0x0000FF) - Math.round(255 * (percent / 100)));
+  return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+};
+
 const MapMarkers = ({
   zipResults,
   addressResults = [],
@@ -50,6 +61,7 @@ const MapMarkers = ({
         const isActive = search.id === activeAddressSearchId;
         const settings = search.settings || {};
         const shouldShowMarkers = settings.showMarkers ?? true;
+        const overlayColor = settings.overlayColor || '#3b82f6';
 
         if (!shouldShowMarkers) return null;
 
@@ -78,7 +90,7 @@ const MapMarkers = ({
                   <div style="
                     width: 8px;
                     height: 8px;
-                    background: ${isActive ? '#3b82f6' : '#6b7280'};
+                    background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
                     border: 2px solid white;
                     border-radius: 50%;
                     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
@@ -258,6 +270,7 @@ const MapMarkers = ({
         const settings = search.settings || {};
         const shouldShowRadius = settings.showRadius ?? true;
         const shouldShowMarker = settings.showMarkers ?? true;
+        const overlayColor = settings.overlayColor || '#dc2626';
 
         if (!search.center) return null;
 
@@ -269,7 +282,8 @@ const MapMarkers = ({
                 center={search.center}
                 radius={search.radius * 1609.34} // Convert miles to meters
                 pathOptions={{
-                  color: isActive ? '#dc2626' : '#6b7280',
+                  color: isActive ? overlayColor : darkenColor(overlayColor, 30),
+                  fillColor: overlayColor,
                   fillOpacity: isActive ? 0.15 : 0.08,
                   weight: isActive ? 2.5 : 1.5,
                   dashArray: isActive ? null : '5, 5'
@@ -286,7 +300,7 @@ const MapMarkers = ({
                     <div style="
                       width: ${isActive ? '20px' : '16px'};
                       height: ${isActive ? '20px' : '16px'};
-                      background: ${isActive ? '#dc2626' : '#6b7280'};
+                      background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
                       border: 2px solid white;
                       border-radius: 50%;
                       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -353,6 +367,7 @@ const MapMarkers = ({
         const settings = search.settings || {};
         const shouldShowRadius = settings.showRadius ?? true;
         const shouldShowMarker = settings.showMarkers ?? true;
+        const overlayColor = settings.overlayColor || '#3b82f6';
 
         return (
           <React.Fragment key={`address-radius-${search.id}`}>
@@ -362,7 +377,8 @@ const MapMarkers = ({
                 center={search.center}
                 radius={search.radius * 1609.34} // Convert miles to meters
                 pathOptions={{
-                  color: isActive ? '#3b82f6' : '#9ca3af',
+                  color: isActive ? overlayColor : darkenColor(overlayColor, 30),
+                  fillColor: overlayColor,
                   fillOpacity: isActive ? 0.15 : 0.08,
                   weight: isActive ? 2.5 : 1.5,
                   dashArray: isActive ? null : '5, 5'
@@ -379,7 +395,7 @@ const MapMarkers = ({
                     <div style="
                       width: ${isActive ? '20px' : '16px'};
                       height: ${isActive ? '20px' : '16px'};
-                      background: ${isActive ? '#3b82f6' : '#9ca3af'};
+                      background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
                       border: 2px solid white;
                       border-radius: 50%;
                       box-shadow: 0 2px 8px rgba(0,0,0,0.3);

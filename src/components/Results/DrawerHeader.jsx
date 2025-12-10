@@ -1,9 +1,11 @@
-import React from 'react';
-import { ChevronUp, ChevronDown, Maximize2, Minimize2, Search, Copy, FileDown, Download, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronUp, ChevronDown, Maximize2, Minimize2, Search, Copy, FileDown, Download, Check, Camera, Loader2, Share2 } from 'lucide-react';
 import DrawerTabs from './DrawerTabs';
 import BoundarySettings from './BoundarySettings';
 import { useUI } from '../../contexts/UIContext';
 import { useMap } from '../../contexts/MapContext';
+import { useShare } from '../../contexts/ShareContext';
+import { captureAndDownload } from '../../services/screenshotService';
 
 const DrawerHeader = ({
   handleMouseDown,
@@ -30,8 +32,36 @@ const DrawerHeader = ({
     setDrawerSearchTerm,
     copySuccess,
     setShowCustomExport,
-    setDrawerState
+    setDrawerState,
+    showToast
   } = useUI();
+
+  const { mapRef } = useMap();
+  const { setShowShareModal } = useShare();
+
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
+
+  const handleScreenshot = async () => {
+    if (!mapRef?.current) {
+      showToast?.('Map not available', 'error');
+      return;
+    }
+
+    setIsCapturingScreenshot(true);
+    try {
+      const mapContainer = mapRef.current.getContainer();
+      const filename = await captureAndDownload(mapContainer, {
+        hideUI: true,
+        filename: 'geosearch-map'
+      });
+      showToast?.(`Screenshot saved: ${filename}`, 'success');
+    } catch (error) {
+      console.error('Screenshot failed:', error);
+      showToast?.('Failed to capture screenshot', 'error');
+    } finally {
+      setIsCapturingScreenshot(false);
+    }
+  };
 
   // Determine if buttons should be disabled based on active tab
   const isSearchHistoryTab = activeTab === 'searches';
@@ -156,6 +186,39 @@ const DrawerHeader = ({
       {/* Actions and Boundary Controls */}
       <div className="flex items-center space-x-2">
         <BoundarySettings />
+
+        {/* Share button */}
+        <button
+          onClick={() => setShowShareModal(true)}
+          className={`p-1.5 rounded-full transition-colors ${
+            isDarkMode
+              ? 'text-white hover:bg-gray-600 bg-gray-700'
+              : 'text-gray-700 hover:bg-gray-200 bg-gray-100'
+          }`}
+          title="Share map view"
+        >
+          <Share2 className="h-4 w-4" />
+        </button>
+
+        {/* Screenshot button */}
+        <button
+          onClick={handleScreenshot}
+          disabled={isCapturingScreenshot}
+          className={`p-1.5 rounded-full transition-colors ${
+            isCapturingScreenshot
+              ? 'opacity-50 cursor-wait'
+              : isDarkMode
+                ? 'text-white hover:bg-gray-600 bg-gray-700'
+                : 'text-gray-700 hover:bg-gray-200 bg-gray-100'
+          }`}
+          title="Capture map screenshot"
+        >
+          {isCapturingScreenshot ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Camera className="h-4 w-4" />
+          )}
+        </button>
 
         <div className="flex items-center space-x-2">
           <button
