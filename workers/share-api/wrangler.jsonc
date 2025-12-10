@@ -14,6 +14,6 @@
 		}
 	],
 	"vars": {
-		"ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:5174,http://localhost:5175,https://geosearch.edwinlovett.com"
+		"ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:5174,http://localhost:5175,https://geosearch.edwinlovett.com,https://zip-search-mu.vercel.app"
 	}
 }
