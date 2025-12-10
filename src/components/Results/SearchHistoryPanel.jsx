@@ -111,28 +111,40 @@ const SearchHistoryPanel = () => {
 
     // Get existing ZIP codes to exclude from neighbor results
     const existingZipCodes = (zipResults || []).map(z => z.zipCode);
-
-    // Need boundary data for the search ZIPs
-    if (!zipBoundariesData || !zipBoundariesData.features) {
-      showToast('ZIP boundaries not loaded. Enable ZIP boundaries first.', 'warning');
-      setShowZipBoundaries(true);
-      return;
-    }
-
-    // Get boundary features for ZIPs in this search
-    const searchZipCodes = new Set(searchZips.map(z => z.zipCode));
-    const boundaryFeatures = zipBoundariesData.features.filter(f =>
-      searchZipCodes.has(f.properties?.zipcode || f.properties?.ZCTA5)
-    );
-
-    if (boundaryFeatures.length === 0) {
-      showToast('No boundary data found for search ZIPs', 'warning');
-      return;
-    }
+    const searchZipCodes = Array.from(new Set(searchZips.map(z => z.zipCode)));
 
     setLoadingNeighbors(true);
 
     try {
+      // Try to get boundaries from existing data first, otherwise fetch directly
+      let boundaryFeatures = [];
+
+      if (zipBoundariesData && zipBoundariesData.features) {
+        // Use existing boundary data if available
+        boundaryFeatures = zipBoundariesData.features.filter(f =>
+          searchZipCodes.includes(f.properties?.zipcode || f.properties?.ZCTA5)
+        );
+      }
+
+      // If no boundaries found in existing data, fetch them directly
+      if (boundaryFeatures.length === 0) {
+        showToast('Loading ZIP boundaries...', 'info');
+        const boundariesData = await zipBoundariesService.getMultipleZipBoundaries(
+          searchZipCodes,
+          true // simplified
+        );
+
+        if (boundariesData && boundariesData.features) {
+          boundaryFeatures = boundariesData.features;
+        }
+      }
+
+      if (boundaryFeatures.length === 0) {
+        showToast('Could not load boundary data for search ZIPs', 'warning');
+        setLoadingNeighbors(false);
+        return;
+      }
+
       const neighbors = await zipBoundariesService.findNeighboringZips(
         boundaryFeatures,
         existingZipCodes
