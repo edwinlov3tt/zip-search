@@ -1,10 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useMap } from 'react-leaflet';
+import { useUI } from '../../contexts/UIContext';
+import { useSearch } from '../../contexts/SearchContext';
 
 const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportChange }) => {
   const map = useMap();
   const [isModifierKeyPressed, setIsModifierKeyPressed] = useState(false);
   const [initialViewSet, setInitialViewSet] = useState(false);
+  const { drawerState, drawerHeight } = useUI();
+  const { searchPerformed } = useSearch();
+  const lastInvalidateRef = useRef(0);
+
+  // Invalidate map size when drawer state changes or first search happens
+  // This fixes the rendering glitch on first search
+  useEffect(() => {
+    // Throttle invalidateSize calls to prevent excessive updates
+    const now = Date.now();
+    if (now - lastInvalidateRef.current < 100) return;
+    lastInvalidateRef.current = now;
+
+    // Small delay to let CSS transitions complete
+    const timer = setTimeout(() => {
+      if (map) {
+        map.invalidateSize({ animate: false });
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [map, drawerState, drawerHeight, searchPerformed]);
 
   // Only set initial view once to avoid conflicting with programmatic updates
   useEffect(() => {
