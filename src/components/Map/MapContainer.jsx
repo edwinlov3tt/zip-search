@@ -8,6 +8,7 @@ import { useMap } from '../../contexts/MapContext';
 import { useResults } from '../../contexts/ResultsContext';
 import { useSearch } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
+import { ZipCodeService } from '../../services/zipCodeService';
 
 const MapContainer = ({
   searchMode,
@@ -46,7 +47,9 @@ const MapContainer = ({
     showVtdBoundaries,
     vtdBoundariesData,
     focusedVtd,
-    showMarkers
+    showMarkers,
+    neighboringZips,
+    setNeighboringZips
   } = useMap();
 
   const {
@@ -57,12 +60,13 @@ const MapContainer = ({
     removedItems,
     getRemovalKey,
     setRemovedItems,
-    setZipResults
+    setZipResults,
+    updateAggregatedResults
   } = useResults();
 
   const { addressSearches, activeAddressSearchId, removeRadiusSearch } = useSearch();
 
-  const { activeTab, setActiveTab } = useUI();
+  const { activeTab, setActiveTab, setToastMessage, setToastType } = useUI();
 
   const showRadiusOverlay = radiusDisplaySettings?.showRadius !== false;
 
@@ -163,6 +167,12 @@ const MapContainer = ({
         getRemovalKey={getRemovalKey}
         setRemovedItems={setRemovedItems}
         setZipResults={setZipResults}
+        neighboringZips={neighboringZips}
+        setNeighboringZips={setNeighboringZips}
+        updateAggregatedResults={updateAggregatedResults}
+        setToastMessage={setToastMessage}
+        setToastType={setToastType}
+        ZipCodeService={ZipCodeService}
       />
     </LeafletMapContainer>
   );

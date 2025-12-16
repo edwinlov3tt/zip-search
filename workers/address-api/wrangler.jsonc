@@ -1,0 +1,25 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "geosearch-address-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-12-09",
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "geosearch-shares",
+			"database_id": "cd146f43-9166-48a6-ba67-fee750e6f62d"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "R2",
+			"bucket_name": "address-results"
+		}
+	],
+	"vars": {
+		"ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:5174,http://localhost:5175,https://geosearch.edwinlovett.com,https://zip-search-mu.vercel.app"
+	}
+}

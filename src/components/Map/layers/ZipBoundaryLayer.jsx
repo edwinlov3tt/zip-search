@@ -1,5 +1,5 @@
-import React from 'react';
-import { GeoJSON } from 'react-leaflet';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { GeoJSON, useMap } from 'react-leaflet';
 
 const ZipBoundaryLayer = ({
   zipBoundariesData,
@@ -16,6 +16,44 @@ const ZipBoundaryLayer = ({
   setZipBoundariesData,
   ZipCodeService
 }) => {
+  const map = useMap();
+  const geoJsonRef = useRef(null);
+  const layersToPatternRef = useRef(new Set());
+
+  // Function to apply diagonal pattern to all tracked layers
+  const applyPatternsToLayers = useCallback(() => {
+    layersToPatternRef.current.forEach(layer => {
+      if (layer._path) {
+        layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+      }
+    });
+  }, []);
+
+  // Apply patterns on map events (zoom, move can recreate SVG paths)
+  useEffect(() => {
+    if (!map) return;
+
+    const handleMapEvent = () => {
+      // Small delay to let Leaflet finish rendering
+      setTimeout(applyPatternsToLayers, 50);
+    };
+
+    map.on('zoomend', handleMapEvent);
+    map.on('moveend', handleMapEvent);
+
+    return () => {
+      map.off('zoomend', handleMapEvent);
+      map.off('moveend', handleMapEvent);
+    };
+  }, [map, applyPatternsToLayers]);
+
+  // Reapply patterns when data changes
+  useEffect(() => {
+    // Small delay to let GeoJSON render
+    const timer = setTimeout(applyPatternsToLayers, 100);
+    return () => clearTimeout(timer);
+  }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, applyPatternsToLayers]);
+
   const handleAddZip = async (zipCode, isExcluded) => {
     try {
       if (isExcluded) {
@@ -104,6 +142,7 @@ const ZipBoundaryLayer = ({
 
   return (
     <GeoJSON
+      ref={geoJsonRef}
       key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}`}
       data={(() => {
         if (showOnlyFocusedBoundary && focusedZipCode) {
@@ -149,8 +188,9 @@ const ZipBoundaryLayer = ({
             color: '#dc2626',
             weight: 1.5,
             opacity: 0.8,
-            fillOpacity: 0.1,
-            fillColor: '#dc2626'
+            fillOpacity: 0.25,
+            fillColor: '#dc2626',
+            className: 'zip-in-results' // Mark for pattern styling
           };
         } else if (isAdditional) {
           // Available to add - blue with distinctive pattern
@@ -176,6 +216,30 @@ const ZipBoundaryLayer = ({
         const isInResults = feature.properties?.inSearchResults;
         const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
 
+        // Track layers that need diagonal pattern
+        if (isInResults && !isExcluded) {
+          layersToPatternRef.current.add(layer);
+
+          // Apply pattern immediately and on 'add' event
+          layer.on('add', () => {
+            setTimeout(() => {
+              if (layer._path) {
+                layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+              }
+            }, 10);
+          });
+
+          // Also try to apply immediately if path exists
+          if (layer._path) {
+            layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+          }
+        }
+
+        // Clean up tracking when layer is removed
+        layer.on('remove', () => {
+          layersToPatternRef.current.delete(layer);
+        });
+
         if (zipCode) {
           // Create popup content based on status
           const popupContent = document.createElement('div');
@@ -183,7 +247,7 @@ const ZipBoundaryLayer = ({
           let buttonHtml = '';
           if (isExcluded) {
             buttonHtml = `
-              <span style="color: #ef4444; font-weight: bold;">❌ Excluded</span><br/>
+              <span style="color: #ef4444; font-weight: bold;">Excluded</span><br/>
               <button
                 id="add-zip-${zipCode}"
                 style="margin-top: 8px; padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;"
@@ -201,7 +265,7 @@ const ZipBoundaryLayer = ({
               </button>
             `;
           } else {
-            buttonHtml = '<span style="color: green;">✓ In Results</span>';
+            buttonHtml = '<span style="color: green;">In Results</span>';
           }
 
           popupContent.innerHTML = `
@@ -234,6 +298,10 @@ const ZipBoundaryLayer = ({
                   weight: isInResults ? 2.5 : 2,
                   fillOpacity: isInResults ? 0.2 : 0.1
                 });
+                // Reapply pattern on hover if in results
+                if (isInResults && !isExcluded && e.target._path) {
+                  e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                }
               }
             },
             mouseout: (e) => {
@@ -242,6 +310,10 @@ const ZipBoundaryLayer = ({
                   weight: isInResults ? 1.5 : 1,
                   fillOpacity: isInResults ? 0.1 : 0.05
                 });
+                // Reapply pattern on mouseout if in results
+                if (isInResults && !isExcluded && e.target._path) {
+                  e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                }
               }
             }
           });

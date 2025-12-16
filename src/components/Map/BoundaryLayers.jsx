@@ -5,6 +5,8 @@ import ZipBoundaryLayer from './layers/ZipBoundaryLayer';
 import StateBoundaryLayer from './layers/StateBoundaryLayer';
 import CityBoundaryLayer from './layers/CityBoundaryLayer';
 import VtdBoundaryLayer from './layers/VtdBoundaryLayer';
+import NeighborZipsLayer from './layers/NeighborZipsLayer';
+import DiagonalPattern from './patterns/DiagonalPattern';
 
 const BoundaryLayers = ({
   showCountyBorders,
@@ -33,10 +35,15 @@ const BoundaryLayers = ({
   setToastType,
   loadBoundariesForSearchResults,
   ZipCodeService,
-  setZipBoundariesData
+  setZipBoundariesData,
+  neighboringZips,
+  setNeighboringZips
 }) => {
   return (
     <>
+      {/* SVG Pattern Definitions for boundaries */}
+      <DiagonalPattern />
+
       {/* County Boundaries Layer */}
       {showCountyBorders && countyBoundaries && (
         <CountyBoundaryLayer
@@ -92,6 +99,20 @@ const BoundaryLayers = ({
           focusedVtd={focusedVtd}
           setToastMessage={setToastMessage}
           setToastType={setToastType}
+        />
+      )}
+
+      {/* Neighboring ZIPs Layer - dashed blue ZIPs that border search results */}
+      {neighboringZips && neighboringZips.features && neighboringZips.features.length > 0 && (
+        <NeighborZipsLayer
+          neighboringZips={neighboringZips}
+          setNeighboringZips={setNeighboringZips}
+          setZipResults={setZipResults}
+          zipResults={zipResults}
+          updateAggregatedResults={updateAggregatedResults}
+          setToastMessage={setToastMessage}
+          setToastType={setToastType}
+          ZipCodeService={ZipCodeService}
         />
       )}
     </>

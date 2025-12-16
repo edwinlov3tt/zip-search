@@ -33,6 +33,8 @@ export const MapProvider = ({ children }) => {
   const [loadingZipBoundaries, setLoadingZipBoundaries] = useState(false);
   const [focusedZipCode, setFocusedZipCode] = useState(null);
   const [showOnlyFocusedBoundary, setShowOnlyFocusedBoundary] = useState(false);
+  const [neighboringZips, setNeighboringZips] = useState(null); // GeoJSON FeatureCollection of neighbor boundaries
+  const [loadingNeighbors, setLoadingNeighbors] = useState(false);
 
   const [showStateBoundaries, setShowStateBoundaries] = useState(false);
   const [stateBoundariesData, setStateBoundariesData] = useState(null);
@@ -253,6 +255,10 @@ export const MapProvider = ({ children }) => {
     setFocusedZipCode,
     showOnlyFocusedBoundary,
     setShowOnlyFocusedBoundary,
+    neighboringZips,
+    setNeighboringZips,
+    loadingNeighbors,
+    setLoadingNeighbors,
 
     // State boundaries
     showStateBoundaries,

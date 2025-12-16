@@ -1,0 +1,9 @@
+# Generated CSV files
+*.csv
+
+# Node modules
+node_modules/
+
+# Wrangler
+.wrangler/
+.dev.vars

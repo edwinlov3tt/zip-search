@@ -314,6 +314,117 @@ class ZipBoundariesService {
   importCache(data) {
     return boundaryCache.importCache(data);
   }
+
+  /**
+   * Find neighboring ZIPs that touch the boundaries of given ZIPs
+   * Uses Census TIGER API spatial query with esriSpatialRelTouches
+   * @param {Array<Object>} zipBoundaries - GeoJSON features of ZIPs to find neighbors for
+   * @param {Array<string>} existingZips - ZIP codes already in results (to exclude)
+   * @returns {Promise<Object>} GeoJSON FeatureCollection of neighboring ZIPs
+   */
+  async findNeighboringZips(zipBoundaries, existingZips = []) {
+    if (!zipBoundaries || zipBoundaries.length === 0) {
+      return {
+        type: 'FeatureCollection',
+        features: []
+      };
+    }
+
+    const allNeighbors = new Map(); // Use Map to dedupe by zipcode
+    const existingSet = new Set(existingZips.map(z => String(z)));
+
+    // Process each ZIP boundary to find its neighbors
+    // Limit to first 10 ZIPs to avoid excessive API calls
+    const zipsToProcess = zipBoundaries.slice(0, 10);
+
+    for (const feature of zipsToProcess) {
+      if (!feature.geometry) continue;
+
+      try {
+        // Convert GeoJSON geometry to Esri JSON format for the API
+        const esriGeometry = this.geoJsonToEsri(feature.geometry);
+        if (!esriGeometry) continue;
+
+        const params = new URLSearchParams({
+          geometry: JSON.stringify(esriGeometry),
+          geometryType: 'esriGeometryPolygon',
+          spatialRel: 'esriSpatialRelTouches', // Find ZIPs that touch this boundary
+          outFields: 'ZCTA5,GEOID,NAME,AREALAND,AREAWATER,CENTLAT,CENTLON',
+          returnGeometry: 'true',
+          f: 'geojson',
+          geometryPrecision: '4'
+        });
+
+        const url = `${TIGER_API_BASE}/${ZCTA_LAYER}/query?${params}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          console.warn(`Neighbor query failed for ZIP: ${response.status}`);
+          continue;
+        }
+
+        const data = await response.json();
+
+        if (data && data.features) {
+          data.features.forEach(neighborFeature => {
+            const normalizedFeature = this.normalizeFeature(neighborFeature);
+            const zipCode = normalizedFeature.properties?.zipcode;
+
+            // Only add if not already in results and not already found
+            if (zipCode && !existingSet.has(zipCode) && !allNeighbors.has(zipCode)) {
+              allNeighbors.set(zipCode, {
+                ...normalizedFeature,
+                properties: {
+                  ...normalizedFeature.properties,
+                  isNeighbor: true // Mark as neighboring ZIP
+                }
+              });
+            }
+          });
+        }
+      } catch (error) {
+        console.warn('Error finding neighbors:', error);
+      }
+    }
+
+    return {
+      type: 'FeatureCollection',
+      features: Array.from(allNeighbors.values()),
+      properties: {
+        sourceZips: zipsToProcess.length,
+        neighborsFound: allNeighbors.size
+      }
+    };
+  }
+
+  /**
+   * Convert GeoJSON geometry to Esri JSON format
+   * @param {Object} geoJsonGeometry - GeoJSON geometry object
+   * @returns {Object|null} Esri JSON geometry or null
+   */
+  geoJsonToEsri(geoJsonGeometry) {
+    if (!geoJsonGeometry || !geoJsonGeometry.type) return null;
+
+    try {
+      if (geoJsonGeometry.type === 'Polygon') {
+        return {
+          rings: geoJsonGeometry.coordinates,
+          spatialReference: { wkid: 4326 }
+        };
+      } else if (geoJsonGeometry.type === 'MultiPolygon') {
+        // Flatten MultiPolygon to single polygon (use first ring)
+        const rings = geoJsonGeometry.coordinates.flat(1);
+        return {
+          rings: rings,
+          spatialReference: { wkid: 4326 }
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to convert GeoJSON to Esri:', error);
+    }
+
+    return null;
+  }
 }
 
 // Export singleton instance

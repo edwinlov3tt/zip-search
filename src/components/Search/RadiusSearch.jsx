@@ -31,6 +31,7 @@ const RadiusSearch = ({
     isSearching,
     radiusSearches,
     activeRadiusSearchId,
+    setActiveRadiusSearchId,
     radiusDisplaySettings,
     removeRadiusSearch,
     updateRadiusSearchSettings,
@@ -67,16 +68,16 @@ const RadiusSearch = ({
     };
   }, [openMenuId]);
 
-  const focusZone = async (chip) => {
-    const result = await executeRadiusSearchFromHistory(chip.id);
-    const resolvedEntry = result?.entry || chip;
+  const focusZone = (chip) => {
+    // Just focus on the chip without re-executing the search
+    setActiveRadiusSearchId(chip.id);
 
-    if (resolvedEntry.center) {
-      setMapCenter(resolvedEntry.center);
-      setMapZoom(resolvedEntry.zoom || getZoomForRadius(resolvedEntry.radius));
+    if (chip.center) {
+      setMapCenter(chip.center);
+      setMapZoom(chip.zoom || getZoomForRadius(chip.radius));
     }
 
-    setShowZipBoundaries(resolvedEntry.settings?.showZipBorders ?? false);
+    setShowZipBoundaries(chip.settings?.showZipBorders ?? false);
     setOpenMenuId(chip.id);
   };
 

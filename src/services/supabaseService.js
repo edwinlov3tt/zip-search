@@ -7,10 +7,13 @@ import { createClient } from '@supabase/supabase-js';
 import { getStateName } from '../utils/stateNames.js';
 
 // Initialize Supabase client (env-only; no hardcoded defaults)
+// Using global singleton to avoid "Multiple GoTrueClient instances" warning
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey);
-const supabase = hasSupabase ? createClient(supabaseUrl, supabaseAnonKey) : null;
+const supabase = hasSupabase
+  ? (globalThis.__supabaseClient ||= createClient(supabaseUrl, supabaseAnonKey))
+  : null;
 
 // One-time init log (non-sensitive)
 try {

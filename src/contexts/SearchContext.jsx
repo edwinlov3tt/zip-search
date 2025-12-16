@@ -167,6 +167,11 @@ export const SearchProvider = ({ children }) => {
   const [lastOverpassCall, setLastOverpassCall] = useState(0);
   const [overpassCooldownRemaining, setOverpassCooldownRemaining] = useState(0);
 
+  // Worker API for address search
+  const [addressJobId, setAddressJobId] = useState(null);
+  const [addressJobProgress, setAddressJobProgress] = useState({ progress: 0, found: 0 });
+  const addressEventSourceRef = useRef(null);
+
   // Mode switch modal
   const [showModeSwitchModal, setShowModeSwitchModal] = useState(false);
   const [pendingMode, setPendingMode] = useState(null);
@@ -482,6 +487,60 @@ export const SearchProvider = ({ children }) => {
     return 0; // Ready to search
   }, [lastOverpassCall]);
 
+  // Perform address search via Worker API with streaming
+  const searchAddressesViaWorker = useCallback(async (params) => {
+    const { startAddressSearch, streamAddressResults } = await import('../services/addressApiService');
+
+    return new Promise((resolve, reject) => {
+      let allAddresses = [];
+
+      // Start the job
+      startAddressSearch(params)
+        .then(({ jobId }) => {
+          setAddressJobId(jobId);
+          setAddressJobProgress({ progress: 0, found: 0 });
+
+          // Stream results
+          const eventSource = streamAddressResults(jobId, {
+            onProgress: (data) => {
+              setAddressJobProgress({ progress: data.progress, found: data.found });
+            },
+            onBatch: (addresses) => {
+              allAddresses = allAddresses.concat(addresses);
+              setAddressJobProgress(prev => ({ ...prev, found: allAddresses.length }));
+            },
+            onComplete: (result) => {
+              setAddressJobId(null);
+              setAddressJobProgress({ progress: 100, found: result.totalFound });
+              setLastOverpassCall(Date.now());
+              resolve(allAddresses);
+            },
+            onError: (error) => {
+              setAddressJobId(null);
+              setAddressJobProgress({ progress: 0, found: 0 });
+              reject(new Error(error.message || 'Address search failed'));
+            }
+          });
+
+          addressEventSourceRef.current = eventSource;
+        })
+        .catch((err) => {
+          setAddressJobId(null);
+          reject(err);
+        });
+    });
+  }, [setLastOverpassCall]);
+
+  // Cancel active address search
+  const cancelAddressSearch = useCallback(() => {
+    if (addressEventSourceRef.current) {
+      addressEventSourceRef.current.close();
+      addressEventSourceRef.current = null;
+    }
+    setAddressJobId(null);
+    setAddressJobProgress({ progress: 0, found: 0 });
+  }, []);
+
   const addAddressSearch = useCallback((params, results, bounds) => {
     const {
       mode, // 'radius' or 'polygon'
@@ -555,9 +614,6 @@ export const SearchProvider = ({ children }) => {
       setApiError(null);
 
       try {
-        const { default: overpassService } = await import('../services/overpassService');
-        const { milesToMeters } = await import('../utils/polygonHelpers');
-
         // Calculate appropriate zoom based on radius
         let zoomLevel = 11;
         if (addressRadius <= 5) {
@@ -573,14 +629,12 @@ export const SearchProvider = ({ children }) => {
           mapRef.current.setView([lat, lng], zoomLevel, { animate: true });
         }
 
-        // Convert radius to meters
-        const radiusMeters = milesToMeters(addressRadius);
-
-        // Search addresses via Overpass API
-        const addresses = await overpassService.searchAddressesByRadius(lat, lng, radiusMeters);
-
-        // Set cooldown timer
-        setLastOverpassCall(Date.now());
+        // Search addresses via Worker API
+        const addresses = await searchAddressesViaWorker({
+          mode: 'radius',
+          center: { lat, lng },
+          radius: addressRadius
+        });
 
         // Create search entry
         const searchLabel = `${lat.toFixed(4)}, ${lng.toFixed(4)} (${addressRadius}mi)`;
@@ -603,7 +657,7 @@ export const SearchProvider = ({ children }) => {
         setDrawerState('half');
 
         if (addresses.length === 0) {
-          setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas. Try a different location or larger radius.');
+          setApiError('No addresses found in this area. Try a different location or larger radius.');
         } else {
           setApiError(null);
         }
@@ -1557,9 +1611,6 @@ export const SearchProvider = ({ children }) => {
 
     // Handle address mode separately
     if (searchMode === 'address' && !providedParams) {
-      const { default: overpassService } = await import('../services/overpassService');
-      const { milesToMeters, validatePolygonSize } = await import('../utils/polygonHelpers');
-
       // Check cooldown
       const cooldownRemaining = checkOverpassCooldown();
       if (cooldownRemaining > 0) {
@@ -1609,10 +1660,13 @@ export const SearchProvider = ({ children }) => {
           const location = geocodeResult[0];
           searchLat = location.lat;
           searchLng = location.lon;
-          const radiusMeters = milesToMeters(currentRadius);
 
-          // Search addresses
-          addresses = await overpassService.searchAddressesByRadius(searchLat, searchLng, radiusMeters);
+          // Search addresses via Worker API
+          addresses = await searchAddressesViaWorker({
+            mode: 'radius',
+            center: { lat: searchLat, lng: searchLng },
+            radius: currentRadius
+          });
           searchLabel = `${location.display_name} (${currentRadius}mi)`;
         } else if (currentSubMode === 'polygon') {
           // This should be handled by polygon draw callback
@@ -1621,9 +1675,6 @@ export const SearchProvider = ({ children }) => {
           setIsLoading(false);
           return;
         }
-
-        // Set cooldown timer
-        setLastOverpassCall(Date.now());
 
         // Store results
         const params = {
@@ -2176,43 +2227,82 @@ export const SearchProvider = ({ children }) => {
         }
       }
 
-      // Restore address searches
+      // Restore address searches - re-query via Worker API
       if (sharedState.addressSearches && sharedState.addressSearches.length > 0) {
-        console.log('[Share] Restoring', sharedState.addressSearches.length, 'address searches');
+        console.log('[Share] Restoring', sharedState.addressSearches.length, 'address searches via Worker API');
 
-        const newAddressSearches = [];
-
+        // Process each address search
         for (let i = 0; i < sharedState.addressSearches.length; i++) {
           const savedSearch = sharedState.addressSearches[i];
-          const newEntryId = savedSearch.id || Date.now().toString() + i;
-          const colorIndex = i % SEARCH_COLOR_PALETTE.length;
 
-          const entry = {
-            id: newEntryId,
-            label: savedSearch.label,
-            mode: savedSearch.mode,
-            query: savedSearch.query,
-            center: savedSearch.center,
-            radius: savedSearch.radius,
-            coordinates: savedSearch.coordinates,
-            results: savedSearch.results || [],
-            timestamp: Date.now(),
-            settings: {
-              overlayColor: savedSearch.overlayColor || savedSearch.settings?.overlayColor || SEARCH_COLOR_PALETTE[colorIndex]
-            },
-            needsShapeCreation: savedSearch.mode === 'polygon'
-          };
+          try {
+            let addresses = [];
 
-          newAddressSearches.push(entry);
+            // Re-query using stored parameters via Worker API
+            if (savedSearch.mode === 'radius' && savedSearch.center) {
+              const lat = savedSearch.center[0] || savedSearch.lat;
+              const lng = savedSearch.center[1] || savedSearch.lng;
+              const radius = savedSearch.radius;
+
+              if (lat && lng && radius) {
+                console.log('[Share] Re-querying radius address search:', { lat, lng, radius });
+                addresses = await searchAddressesViaWorker({
+                  mode: 'radius',
+                  center: { lat, lng },
+                  radius
+                });
+              }
+            } else if (savedSearch.mode === 'polygon' && savedSearch.coordinates) {
+              // Convert coordinates to API format
+              const apiCoords = savedSearch.coordinates.map(coord =>
+                Array.isArray(coord) ? { lat: coord[0], lng: coord[1] } : coord
+              );
+
+              console.log('[Share] Re-querying polygon address search:', apiCoords.length, 'points');
+              addresses = await searchAddressesViaWorker({
+                mode: 'polygon',
+                coordinates: apiCoords
+              });
+            }
+
+            // Create search entry with fresh results
+            const colorIndex = i % SEARCH_COLOR_PALETTE.length;
+            const params = {
+              mode: savedSearch.mode,
+              lat: savedSearch.center?.[0] || savedSearch.lat,
+              lng: savedSearch.center?.[1] || savedSearch.lng,
+              radius: savedSearch.radius,
+              coordinates: savedSearch.coordinates,
+              center: savedSearch.center,
+              label: savedSearch.label
+            };
+
+            addAddressSearch(params, addresses, null);
+            console.log('[Share] Restored address search with', addresses.length, 'addresses');
+
+          } catch (error) {
+            console.error('[Share] Failed to restore address search:', error);
+            // Fall back to stored results if available
+            if (savedSearch.results && savedSearch.results.length > 0) {
+              const params = {
+                mode: savedSearch.mode,
+                lat: savedSearch.center?.[0] || savedSearch.lat,
+                lng: savedSearch.center?.[1] || savedSearch.lng,
+                radius: savedSearch.radius,
+                coordinates: savedSearch.coordinates,
+                center: savedSearch.center,
+                label: savedSearch.label
+              };
+              addAddressSearch(params, savedSearch.results, null);
+            }
+          }
         }
 
-        if (newAddressSearches.length > 0) {
-          setAddressSearches(newAddressSearches);
-          setActiveAddressSearchId(newAddressSearches[newAddressSearches.length - 1].id);
-          setIsSearchMode(false);
-          setSearchPerformed(true);
-          setDrawerState('half');
-        }
+        // Update UI state after all searches are restored
+        setActiveTab('streets');
+        setIsSearchMode(false);
+        setSearchPerformed(true);
+        setDrawerState('half');
       }
 
       console.log('[Share] Restoration complete');
@@ -2222,7 +2312,7 @@ export const SearchProvider = ({ children }) => {
 
     // Return boundary settings for caller to apply (requires MapContext access)
     return sharedState.boundarySettings || null;
-  }, [setSearchMode, setMapCenter, setMapZoom, setIsLoading, setRadiusSearches, setSearchResultsById, setActiveRadiusSearchId, setRadiusDisplaySettings, setIsSearchMode, setSearchPerformed, setDrawerState, rebuildDisplayedResults, setPolygonSearches, setActivePolygonSearchId, setZipResults, polygonDisplaySettings, setAddressSearches, setActiveAddressSearchId]);
+  }, [setSearchMode, setMapCenter, setMapZoom, setIsLoading, setRadiusSearches, setSearchResultsById, setActiveRadiusSearchId, setRadiusDisplaySettings, setIsSearchMode, setSearchPerformed, setDrawerState, rebuildDisplayedResults, setPolygonSearches, setActivePolygonSearchId, setZipResults, polygonDisplaySettings, setAddressSearches, setActiveAddressSearchId, searchAddressesViaWorker, addAddressSearch, setActiveTab]);
 
   // Input change handler with autocomplete
   const handleSearchInputChange = useCallback(async (e, uiContext) => {
@@ -2380,14 +2470,12 @@ export const SearchProvider = ({ children }) => {
           return;
         }
 
-        // Import overpassService dynamically
-        const { default: overpassService } = await import('../services/overpassService');
-
-        const radiusMeters = milesToMeters(addressRadius);
-        const addresses = await overpassService.searchAddressesByRadius(finalLocation.lat, finalLocation.lng, radiusMeters);
-
-        // Set cooldown timer
-        setLastOverpassCall(Date.now());
+        // Search addresses via Worker API
+        const addresses = await searchAddressesViaWorker({
+          mode: 'radius',
+          center: { lat: finalLocation.lat, lng: finalLocation.lng },
+          radius: addressRadius
+        });
 
         // Create search entry
         const displayName = finalLocation.displayName || finalLocation.display_name;
@@ -2411,7 +2499,7 @@ export const SearchProvider = ({ children }) => {
         setDrawerState('half');
 
         if (addresses.length === 0) {
-          setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas. Try a different location or larger radius.');
+          setApiError('No addresses found in this area. Try a different location or larger radius.');
         } else {
           setApiError(null);
         }
@@ -2713,15 +2801,15 @@ export const SearchProvider = ({ children }) => {
     const nonEmpty = sampleValues.filter(v => v && v.toString().trim());
     if (nonEmpty.length === 0) return 'ignore';
 
-    // Check if values look like ZIP codes
-    const zipPattern = /^\d{5}(-\d{4})?$/;
+    // Check if values look like ZIP codes (3-5 digits, handling leading zeros stripped)
+    const zipPattern = /^\d{3,5}(-\d{4})?$/;
     if (nonEmpty.some(v => zipPattern.test(v.toString().trim()))) {
       return 'zip';
     }
 
     // Check if values are 2-letter state codes
-    const statePattern = /^[A-Z]{2}$/;
-    if (nonEmpty.every(v => statePattern.test(v.toString().trim()))) {
+    const statePattern = /^[A-Z]{2}$/i;
+    if (nonEmpty.every(v => statePattern.test(v.toString().trim().toUpperCase()))) {
       return 'state';
     }
 
@@ -2733,6 +2821,13 @@ export const SearchProvider = ({ children }) => {
   const processCSVWithMapping = useCallback(async () => {
     try {
       console.log('🔵 processCSVWithMapping started');
+      console.log('🔵 csvFullData rows:', csvFullData?.length);
+      console.log('🔵 columnMapping:', JSON.stringify(columnMapping));
+      if (csvFullData?.length > 0) {
+        console.log('🔵 First row keys:', Object.keys(csvFullData[0]));
+        console.log('🔵 First row values:', Object.values(csvFullData[0]));
+      }
+
       const transformedData = [];
 
       // Process each row once, creating a single search query per row
@@ -2741,6 +2836,10 @@ export const SearchProvider = ({ children }) => {
         const mappedColumns = Object.entries(columnMapping).filter(([header, type]) =>
           type !== 'ignore' && row[header] && row[header].toString().trim()
         );
+
+        if (rowIndex === 0) {
+          console.log('🔵 Row 0 mappedColumns:', mappedColumns);
+        }
 
         if (mappedColumns.length === 0) return; // Skip empty rows
 
@@ -2753,8 +2852,13 @@ export const SearchProvider = ({ children }) => {
         const zipCol = mappedColumns.find(([h, t]) => t === 'zip');
         if (zipCol && row[zipCol[0]]) {
           const zipValue = row[zipCol[0]].toString().trim();
-          if (zipValue && /^\d{5}(-\d{4})?$/.test(zipValue)) {
-            searchQuery = zipValue;
+          // More lenient ZIP pattern: 3-5 digits (to handle ZIPs with leading zeros stripped)
+          // Also handle ZIP+4 format
+          if (zipValue && /^\d{3,5}(-\d{4})?$/.test(zipValue)) {
+            // Pad to 5 digits if necessary (leading zeros)
+            searchQuery = zipValue.includes('-')
+              ? zipValue.split('-')[0].padStart(5, '0') + zipValue.slice(zipValue.indexOf('-'))
+              : zipValue.padStart(5, '0');
             searchType = 'zip';
           }
         }
@@ -3365,22 +3469,24 @@ export const SearchProvider = ({ children }) => {
         });
       }
 
-      // Validate polygon size (max 70 square miles)
+      // Validate polygon size (max 100 square miles - worker API handles chunking)
       const { validatePolygonSize } = await import('../utils/polygonHelpers');
-      const validation = validatePolygonSize(coords, 70);
+      const validation = validatePolygonSize(coords, 100);
 
       if (!validation.valid) {
-        setApiError(`Polygon too large: ${validation.area.toFixed(2)} sq mi (max 70 sq mi)`);
+        setApiError(`Polygon too large: ${validation.area.toFixed(2)} sq mi (max 100 sq mi)`);
         setIsLoading(false);
         return;
       }
 
-      // Call Overpass API for addresses
-      const { default: overpassService } = await import('../services/overpassService');
-      const results = await overpassService.searchAddressesByPolygon(coords);
+      // Convert coords to worker API format (array of {lat, lng})
+      const apiCoords = coords.map(([lat, lng]) => ({ lat, lng }));
 
-      // Update cooldown
-      setLastOverpassCall(Date.now());
+      // Search addresses via Worker API
+      const results = await searchAddressesViaWorker({
+        mode: 'polygon',
+        coordinates: apiCoords
+      });
 
       // Create search entry
       const label = `Polygon ${addressSearches.length + 1}`;
@@ -3403,7 +3509,7 @@ export const SearchProvider = ({ children }) => {
 
       // Show message if no results found
       if (results.length === 0) {
-        setApiError('No addresses found in this area. The current version of this address search tool has limited data in certain areas.');
+        setApiError('No addresses found in this area. Try drawing in a different location.');
       } else {
         setApiError(null);
       }
@@ -3492,6 +3598,9 @@ export const SearchProvider = ({ children }) => {
     overpassCooldownRemaining,
     setOverpassCooldownRemaining,
     checkOverpassCooldown,
+    addressJobId,
+    addressJobProgress,
+    cancelAddressSearch,
     addAddressSearch,
     removeAddressSearch,
     updateAddressSearchSettings,

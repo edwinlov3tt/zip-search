@@ -5,12 +5,16 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase configuration
+// Supabase configuration - use same pattern as supabaseService to avoid duplicate clients
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-// Initialize Supabase client
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Initialize Supabase client only if env vars are present
+// Using global singleton to avoid "Multiple GoTrueClient instances" warning
+const supabase = hasSupabase
+  ? (globalThis.__supabaseClient ||= createClient(SUPABASE_URL, SUPABASE_ANON_KEY))
+  : null;
 
 // State code to FIPS code mapping (kept for backward compatibility)
 const STATE_TO_FIPS = {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RotateCcw, X, ChevronDown, Check, MapPin } from 'lucide-react';
+import { Search, RotateCcw, X, ChevronDown, Check, MapPin, Loader2 } from 'lucide-react';
 import { useSearch } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
-import { milesToMeters } from '../../utils/polygonHelpers';
 import { geocodingService } from '../../services/geocodingService';
 
 const AddressSearch = ({
@@ -29,7 +28,10 @@ const AddressSearch = ({
     overpassCooldownRemaining,
     setOverpassCooldownRemaining,
     addressRadius,
-    setAddressRadius
+    setAddressRadius,
+    addressJobId,
+    addressJobProgress,
+    cancelAddressSearch
   } = useSearch();
 
   const {
@@ -293,14 +295,49 @@ const AddressSearch = ({
             </button>
           </div>
 
-          {/* Helper text box with cooldown, chips, or helper text */}
+          {/* Helper text box with progress, cooldown, chips, or helper text */}
           <div className="w-full" ref={chipsContainerRef}>
             <div className={`min-h-[44px] text-xs px-3 py-2 rounded border ${
               isDarkMode
                 ? 'text-gray-200 bg-gray-700/50 border-gray-600'
                 : 'text-gray-600 bg-gray-50 border-gray-200'
             }`}>
-              {cooldownActive ? (
+              {addressJobId ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className={`h-4 w-4 animate-spin ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`} />
+                      <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Searching for addresses...
+                      </span>
+                    </div>
+                    <button
+                      onClick={cancelAddressSearch}
+                      className={`text-xs px-2 py-1 rounded ${
+                        isDarkMode
+                          ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div className={`w-full h-2 rounded-full overflow-hidden ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${addressJobProgress.progress}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                      {addressJobProgress.found.toLocaleString()} addresses found
+                    </span>
+                    <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                      {addressJobProgress.progress}%
+                    </span>
+                  </div>
+                </div>
+              ) : cooldownActive ? (
                 <div className="space-y-2">
                   <div className={`text-sm text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     Please wait {overpassCooldownRemaining} second{overpassCooldownRemaining !== 1 ? 's' : ''}...
@@ -450,14 +487,49 @@ const AddressSearch = ({
             </div>
           </div>
 
-          {/* Helper text and chips */}
+          {/* Helper text, progress, and chips */}
           <div className="w-full" ref={chipsContainerRef}>
             <div className={`min-h-[44px] text-xs px-3 py-2 rounded border ${
               isDarkMode
                 ? 'text-gray-200 bg-gray-700/50 border-gray-600'
                 : 'text-gray-600 bg-gray-50 border-gray-200'
             }`}>
-            {addressSearches.length === 0 ? (
+            {addressJobId ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className={`h-4 w-4 animate-spin ${isDarkMode ? 'text-blue-400' : 'text-blue-500'}`} />
+                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      Searching polygon for addresses...
+                    </span>
+                  </div>
+                  <button
+                    onClick={cancelAddressSearch}
+                    className={`text-xs px-2 py-1 rounded ${
+                      isDarkMode
+                        ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className={`w-full h-2 rounded-full overflow-hidden ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${addressJobProgress.progress}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                    {addressJobProgress.found.toLocaleString()} addresses found
+                  </span>
+                  <span className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>
+                    {addressJobProgress.progress}%
+                  </span>
+                </div>
+              </div>
+            ) : addressSearches.length === 0 ? (
               <p className="text-center">
                 Draw shapes on the map to search within them
                 <br />

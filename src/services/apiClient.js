@@ -149,10 +149,28 @@ class ApiClient {
   // Health check
   async healthCheck() {
     try {
-      const response = await this.get('health');
-      return response;
+      // Use a simple fetch instead of the full request method
+      // to avoid JSON parsing errors when the endpoint returns HTML
+      const url = this.getFullUrl('health');
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        return { status: 'error', message: 'API returned non-JSON response' };
+      }
+
+      if (!response.ok) {
+        return { status: 'error', message: `HTTP ${response.status}` };
+      }
+
+      const data = await response.json();
+      return data;
     } catch (error) {
-      console.error('Health check failed:', error);
+      // Don't log as error - health check failures are expected when API is unavailable
       return { status: 'error', message: error.message };
     }
   }
