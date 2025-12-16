@@ -83,10 +83,11 @@ const HeaderMappingModal = ({
                   </>
                 ) : (
                   <>
-                    <option value="zipcode">ZIP Code</option>
+                    <option value="zip">ZIP Code</option>
                     <option value="city">City</option>
                     <option value="state">State</option>
                     <option value="county">County</option>
+                    <option value="general">General Search</option>
                   </>
                 )}
               </select>
