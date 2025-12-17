@@ -65,8 +65,19 @@ export async function createShareLink(state, viewMode = 'edit') {
         results: s.results
       })),
 
-      // Hierarchy selection
-      hierarchySelection: state.hierarchySelection || null,
+      // Hierarchy searches - full search history
+      hierarchySearches: (state.hierarchySearches || []).map(s => ({
+        id: s.id,
+        label: s.label,
+        state: s.state,
+        county: s.county,
+        city: s.city,
+        includeCity: s.includeCity,
+        timestamp: s.timestamp
+      })),
+
+      // CSV upload data
+      csvFullData: state.csvFullData || [],
 
       // Boundary visibility settings
       boundarySettings: {

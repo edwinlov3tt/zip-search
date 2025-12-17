@@ -2305,6 +2305,42 @@ export const SearchProvider = ({ children }) => {
         setDrawerState('half');
       }
 
+      // Restore hierarchy searches
+      if (sharedState.hierarchySearches && sharedState.hierarchySearches.length > 0) {
+        console.log('[Share] Restoring', sharedState.hierarchySearches.length, 'hierarchy searches');
+
+        setHierarchySearches(sharedState.hierarchySearches);
+        const lastSearch = sharedState.hierarchySearches[sharedState.hierarchySearches.length - 1];
+        setActiveHierarchySearchId(lastSearch.id);
+
+        // Set hierarchy state from last search
+        if (lastSearch.state) {
+          setSelectedState(lastSearch.state);
+        }
+        if (lastSearch.county) {
+          setSelectedCounty(lastSearch.county);
+        }
+        if (lastSearch.city) {
+          setSelectedCity(lastSearch.city);
+        }
+
+        setSearchMode('hierarchy');
+        setIsSearchMode(false);
+        setSearchPerformed(true);
+        setDrawerState('half');
+      }
+
+      // Restore CSV upload data
+      if (sharedState.csvFullData && sharedState.csvFullData.length > 0) {
+        console.log('[Share] Restoring', sharedState.csvFullData.length, 'CSV rows');
+
+        setCsvFullData(sharedState.csvFullData);
+        setSearchMode('upload');
+        setIsSearchMode(false);
+        setSearchPerformed(true);
+        setDrawerState('half');
+      }
+
       console.log('[Share] Restoration complete');
     } finally {
       setIsLoading(false);
@@ -2312,7 +2348,7 @@ export const SearchProvider = ({ children }) => {
 
     // Return boundary settings for caller to apply (requires MapContext access)
     return sharedState.boundarySettings || null;
-  }, [setSearchMode, setMapCenter, setMapZoom, setIsLoading, setRadiusSearches, setSearchResultsById, setActiveRadiusSearchId, setRadiusDisplaySettings, setIsSearchMode, setSearchPerformed, setDrawerState, rebuildDisplayedResults, setPolygonSearches, setActivePolygonSearchId, setZipResults, polygonDisplaySettings, setAddressSearches, setActiveAddressSearchId, searchAddressesViaWorker, addAddressSearch, setActiveTab]);
+  }, [setSearchMode, setMapCenter, setMapZoom, setIsLoading, setRadiusSearches, setSearchResultsById, setActiveRadiusSearchId, setRadiusDisplaySettings, setIsSearchMode, setSearchPerformed, setDrawerState, rebuildDisplayedResults, setPolygonSearches, setActivePolygonSearchId, setZipResults, polygonDisplaySettings, setAddressSearches, setActiveAddressSearchId, searchAddressesViaWorker, addAddressSearch, setActiveTab, setHierarchySearches, setActiveHierarchySearchId, setSelectedState, setSelectedCounty, setSelectedCity, setCsvFullData]);
 
   // Input change handler with autocomplete
   const handleSearchInputChange = useCallback(async (e, uiContext) => {

@@ -11,7 +11,9 @@ const ShareModal = () => {
     searchMode,
     radiusSearches,
     addressSearches,
-    polygonSearches
+    polygonSearches,
+    hierarchySearches,
+    csvFullData
   } = useSearch();
   const {
     mapCenter,
@@ -48,6 +50,8 @@ const ShareModal = () => {
         radiusSearches,
         addressSearches,
         polygonSearches,
+        hierarchySearches,
+        csvFullData: csvFullData || [],
         mapCenter,
         mapZoom,
         // Include boundary visibility settings
@@ -88,9 +92,14 @@ const ShareModal = () => {
 
   if (!showShareModal) return null;
 
+  // Sharing is disabled for address and geocode modes
+  const isSharingDisabled = searchMode === 'address' || searchMode === 'geocode';
+
   const hasSearches = radiusSearches.length > 0 ||
     addressSearches.length > 0 ||
-    polygonSearches.length > 0;
+    polygonSearches.length > 0 ||
+    hierarchySearches.length > 0 ||
+    (csvFullData && csvFullData.length > 0);
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
@@ -126,7 +135,12 @@ const ShareModal = () => {
 
         {/* Content */}
         <div className="px-6 py-5">
-          {!hasSearches ? (
+          {isSharingDisabled ? (
+            <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p>Sharing is not available for {searchMode === 'address' ? 'Address' : 'Geocode'} Search.</p>
+              <p className="text-sm mt-2">Switch to Radius, Polygon, Hierarchy, or Upload mode to share your results.</p>
+            </div>
+          ) : !hasSearches ? (
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <p>No searches to share yet.</p>
               <p className="text-sm mt-2">Perform a search first to generate a shareable link.</p>
