@@ -867,12 +867,13 @@ export const SearchProvider = ({ children }) => {
     }
   }, [selectedState]);
 
-  // Load cities when county is selected
+  // Load cities when state is selected (optionally filtered by county)
   useEffect(() => {
-    if (selectedState && selectedCounty) {
+    if (selectedState) {
       const loadCities = async () => {
         try {
-          const cities = await ZipCodeService.getCities(selectedState, selectedCounty);
+          // If county is selected, get cities for that county; otherwise get all cities in state
+          const cities = await ZipCodeService.getCities(selectedState, selectedCounty || null);
           setAvailableCities(cities);
         } catch (error) {
           console.error('Failed to load cities:', error);
@@ -892,11 +893,17 @@ export const SearchProvider = ({ children }) => {
 
     const stateName = stateNameByCode.get(state) || state;
 
-    if (state && !county) {
+    if (state && !county && !city) {
+      // State only
       label = `${stateName} (all counties)`;
+    } else if (state && city && !county) {
+      // State + City (no county) - new flow
+      label = `${city}, ${stateName}`;
     } else if (state && county && !includeCitySearch) {
+      // State + County (no city)
       label = `${county}, ${stateName}`;
     } else if (state && county && city) {
+      // State + County + City
       label = `${city}, ${county}, ${stateName}`;
     }
 
@@ -904,7 +911,7 @@ export const SearchProvider = ({ children }) => {
       id,
       label,
       state,
-      county,
+      county: county || null,
       city: includeCitySearch ? city : null,
       includeCity: includeCitySearch,
       timestamp: Date.now()
@@ -927,7 +934,6 @@ export const SearchProvider = ({ children }) => {
     setSelectedState(searchEntry.state);
     setSelectedCounty(searchEntry.county || '');
     setSelectedCity(searchEntry.city || '');
-    setCitySearchDisabled(!searchEntry.includeCity && !!searchEntry.county);
     setActiveHierarchySearchId(searchEntry.id);
 
     // Execute search with the stored parameters
@@ -935,8 +941,9 @@ export const SearchProvider = ({ children }) => {
       mode: 'hierarchy',
       state: searchEntry.state,
       county: searchEntry.county || undefined,
-      city: searchEntry.includeCity ? searchEntry.city : undefined,
-      countyOnly: searchEntry.state && !searchEntry.county // Only return counties if state-only
+      city: searchEntry.city || undefined,
+      // Only return counties if state-only (no county and no city)
+      countyOnly: searchEntry.state && !searchEntry.county && !searchEntry.city
     };
 
     await handleSearch({ providedParams: searchParams });

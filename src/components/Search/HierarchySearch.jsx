@@ -20,8 +20,6 @@ const HierarchySearch = ({
     isLoading,
     hierarchySearches,
     activeHierarchySearchId,
-    citySearchDisabled,
-    setCitySearchDisabled,
     addHierarchySearch,
     removeHierarchySearch,
     executeHierarchySearch
@@ -92,11 +90,11 @@ const HierarchySearch = ({
     }
   }, [selectedState, selectedCounty, selectedCity, mapRef]);
 
-  // Auto-search when state + county selected (with city disabled)
+  // Auto-search when state + county selected (no city)
   useEffect(() => {
-    if (selectedState && selectedCounty && citySearchDisabled) {
+    if (selectedState && selectedCounty && !selectedCity) {
       const timer = setTimeout(() => {
-        const searchEntry = addHierarchySearch(selectedState, selectedCounty, null, false);
+        addHierarchySearch(selectedState, selectedCounty, null, false);
         handleSearch({
           providedParams: {
             mode: 'hierarchy',
@@ -107,7 +105,24 @@ const HierarchySearch = ({
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [selectedState, selectedCounty, citySearchDisabled, addHierarchySearch, handleSearch]);
+  }, [selectedState, selectedCounty, selectedCity, addHierarchySearch, handleSearch]);
+
+  // Auto-search when state + city selected (no county)
+  useEffect(() => {
+    if (selectedState && selectedCity && !selectedCounty) {
+      const timer = setTimeout(() => {
+        addHierarchySearch(selectedState, null, selectedCity, true);
+        handleSearch({
+          providedParams: {
+            mode: 'hierarchy',
+            state: selectedState,
+            city: selectedCity
+          }
+        });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedState, selectedCity, selectedCounty, addHierarchySearch, handleSearch]);
 
   // Auto-zoom when county is selected
   useEffect(() => {
@@ -126,11 +141,11 @@ const HierarchySearch = ({
     }
   }, [selectedCounty, selectedState, selectedCity, mapRef]);
 
-  // Auto-search when full hierarchy is selected
+  // Auto-search when full hierarchy is selected (state + county + city)
   useEffect(() => {
-    if (selectedState && selectedCounty && selectedCity && !citySearchDisabled) {
+    if (selectedState && selectedCounty && selectedCity) {
       const timer = setTimeout(() => {
-        const searchEntry = addHierarchySearch(selectedState, selectedCounty, selectedCity, true);
+        addHierarchySearch(selectedState, selectedCounty, selectedCity, true);
         handleSearch({
           providedParams: {
             mode: 'hierarchy',
@@ -142,11 +157,11 @@ const HierarchySearch = ({
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [selectedState, selectedCounty, selectedCity, citySearchDisabled, addHierarchySearch, handleSearch]);
+  }, [selectedState, selectedCounty, selectedCity, addHierarchySearch, handleSearch]);
 
   // Auto-zoom when city is selected
   useEffect(() => {
-    if (selectedState && selectedCounty && selectedCity && !citySearchDisabled && mapRef.current) {
+    if (selectedState && selectedCity && mapRef.current) {
       // For city view, we'll zoom to level 12-13
       const timer = setTimeout(() => {
         if (mapRef.current && mapRef.current._container) {
@@ -157,15 +172,7 @@ const HierarchySearch = ({
       }, 600); // Slightly after search starts
       return () => clearTimeout(timer);
     }
-  }, [selectedCity, selectedCounty, selectedState, citySearchDisabled, mapRef]);
-
-  const handleCityToggle = () => {
-    setCitySearchDisabled(!citySearchDisabled);
-    if (citySearchDisabled) {
-      // Re-enabling city search, clear city selection
-      setSelectedCity('');
-    }
-  };
+  }, [selectedCity, selectedState, mapRef]);
 
   const handleChipClick = async (chip) => {
     setOpenMenuId(chip.id);
@@ -190,7 +197,6 @@ const HierarchySearch = ({
               setSelectedState(e.target.value);
               setSelectedCounty(''); // Reset county and city when state changes
               setSelectedCity('');
-              setCitySearchDisabled(false);
             }}
             disabled={false}
             className={`w-1/3 h-9 px-3 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
@@ -232,9 +238,9 @@ const HierarchySearch = ({
             <select
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
-              disabled={!selectedState || !selectedCounty || citySearchDisabled}
-              className={`w-full h-9 ${selectedState && selectedCounty && !citySearchDisabled ? 'pr-10' : 'pr-3'} pl-3 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
-                (!selectedState || !selectedCounty || citySearchDisabled)
+              disabled={!selectedState}
+              className={`w-full h-9 ${selectedState ? 'pr-3' : 'pr-3'} pl-3 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+                !selectedState
                   ? isDarkMode
                     ? 'bg-gray-800 text-gray-500 border-gray-700'
                     : 'bg-gray-100 text-gray-500 border-gray-300'
@@ -243,31 +249,17 @@ const HierarchySearch = ({
                     : 'bg-white text-gray-900 border-gray-300'
               }`}
             >
-              <option value="">{citySearchDisabled ? 'City search disabled' : 'Select City'}</option>
-              {!citySearchDisabled && availableCities.map(city => (
+              <option value="">
+                {!selectedState
+                  ? 'Select City'
+                  : selectedCounty
+                    ? 'Select City (optional)'
+                    : `Select City (${availableCities.length} in state)`}
+              </option>
+              {availableCities.map(city => (
                 <option key={city.name} value={city.name}>{city.name}</option>
               ))}
             </select>
-
-            {/* X button to disable city dropdown */}
-            {selectedState && selectedCounty && (
-              <button
-                type="button"
-                onClick={handleCityToggle}
-                className={`absolute right-2 top-1/2 transform -translate-y-1/2 h-5 w-5 rounded flex items-center justify-center transition-colors ${
-                  citySearchDisabled
-                    ? isDarkMode
-                      ? 'bg-red-600/20 text-red-400 hover:bg-red-600/30'
-                      : 'bg-red-100 text-red-600 hover:bg-red-200'
-                    : isDarkMode
-                      ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-600'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-                title={citySearchDisabled ? 'Enable city search' : 'Disable city search'}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
         </div>
 
@@ -296,7 +288,7 @@ const HierarchySearch = ({
         }`}>
           {hierarchySearches.length === 0 ? (
             <p className="text-center">
-              Select a state to see all counties, or select state + county to see cities and ZIP codes
+              Select a state, then search by county or city — no need to select county first
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
