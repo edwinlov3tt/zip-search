@@ -25,6 +25,7 @@ const MapMarkers = ({
   activeTab,
   setActiveTab,
   handleResultSelect,
+  handleResultDoubleClick,
   geocodingService,
   removedItems,
   getRemovalKey,
@@ -106,6 +107,11 @@ const MapMarkers = ({
                     setActiveTab('streets');
                   }
                   await handleResultSelect('address', result);
+                },
+                dblclick: async () => {
+                  if (handleResultDoubleClick) {
+                    await handleResultDoubleClick('address', result);
+                  }
                 }
               }}
             >
@@ -205,6 +211,11 @@ const MapMarkers = ({
                   setActiveTab('zips');
                 }
                 await handleResultSelect('zip', result);
+              },
+              dblclick: async () => {
+                if (handleResultDoubleClick) {
+                  await handleResultDoubleClick('zip', result);
+                }
               }
             }}
           >

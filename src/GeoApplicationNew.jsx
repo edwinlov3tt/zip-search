@@ -444,6 +444,7 @@ const GeoApplicationContent = () => {
             radiusCenter={radiusCenter}
             radiusDisplaySettings={radiusDisplaySettings}
             handleResultSelect={handleResultSelect}
+            handleResultDoubleClick={handleResultDoubleClick}
             geocodingService={{
               formatDisplayName: (location) => {
                 if (location.display_name) return location.display_name;

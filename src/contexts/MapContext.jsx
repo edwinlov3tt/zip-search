@@ -32,6 +32,7 @@ export const MapProvider = ({ children }) => {
   const [zipBoundariesData, setZipBoundariesData] = useState(null);
   const [loadingZipBoundaries, setLoadingZipBoundaries] = useState(false);
   const [focusedZipCode, setFocusedZipCode] = useState(null);
+  const [focusedZipBoundary, setFocusedZipBoundary] = useState(null); // Separate boundary for focused ZIP (independent of global toggle)
   const [showOnlyFocusedBoundary, setShowOnlyFocusedBoundary] = useState(false);
   const [neighboringZips, setNeighboringZips] = useState(null); // GeoJSON FeatureCollection of neighbor boundaries
   const [loadingNeighbors, setLoadingNeighbors] = useState(false);
@@ -55,10 +56,14 @@ export const MapProvider = ({ children }) => {
   // Marker visibility state
   const [showMarkers, setShowMarkers] = useState(true);
 
+  // Hatching pattern toggle for boundaries
+  const [showHatching, setShowHatching] = useState(false);
+
   // Refs
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const featureGroupRef = useRef(null);
+  const focusedZipCodeRef = useRef(null); // Track current focused ZIP for async loading
 
   // Map click handler for radius placement
   const [mapClickCallback, setMapClickCallback] = useState(null);
@@ -73,15 +78,21 @@ export const MapProvider = ({ children }) => {
   const handleResultMapInteraction = useCallback(async ({ type, result, center, zoom, bounds, padding }) => {
     if (!mapRef.current) return;
 
-    // Handle special fitBounds type
-    if (type === 'fitBounds' && bounds) {
-      // Fit the map to show all bounds with padding
-      mapRef.current.fitBounds(bounds, {
-        animate: true,
-        padding: padding || 50
-      });
-      // Clear any focused items
+    // Handle special fitBounds type (used for deselecting/clearing focus)
+    if (type === 'fitBounds') {
+      // Clear any focused items and show all boundaries
       setFocusedZipCode(null);
+      setFocusedZipBoundary(null);
+      setShowOnlyFocusedBoundary(false);
+      focusedZipCodeRef.current = null; // Clear the ref to prevent stale boundary loads
+
+      // Only fit bounds if valid bounds provided
+      if (bounds) {
+        mapRef.current.fitBounds(bounds, {
+          animate: true,
+          padding: padding || 50
+        });
+      }
       return;
     }
 
@@ -90,25 +101,65 @@ export const MapProvider = ({ children }) => {
 
     // Additional logic based on type (can be extended later for boundaries, etc.)
     switch (type) {
-      case 'zip':
-        // For ZIP codes, we might want to show boundaries
-        setFocusedZipCode(result.zipCode);
-        // Use functional update to avoid dependency on showZipBoundaries
-        setShowZipBoundaries(prev => prev || true);
+      case 'zip': {
+        // For ZIP codes, show only the selected boundary
+        // Don't auto-enable showZipBoundaries - let user control that toggle explicitly
+        const targetZipCode = result.zipCode;
+
+        // IMPORTANT: Clear the old boundary FIRST to prevent visual glitches
+        // This ensures the old boundary disappears immediately before loading new one
+        setFocusedZipBoundary(null);
+        setFocusedZipCode(targetZipCode);
+        setShowOnlyFocusedBoundary(true);
+
+        // Track which ZIP we're loading for (handles rapid clicking)
+        focusedZipCodeRef.current = targetZipCode;
+
+        // Load the focused boundary independently
+        try {
+          const boundary = await zipBoundariesService.getZipBoundary(targetZipCode, true);
+
+          // Only set if this is still the focused ZIP (prevents stale updates from rapid clicking)
+          if (focusedZipCodeRef.current === targetZipCode && boundary) {
+            setFocusedZipBoundary({
+              type: 'FeatureCollection',
+              features: [{
+                ...boundary,
+                properties: {
+                  ...boundary.properties,
+                  zipcode: targetZipCode,
+                  inSearchResults: true
+                }
+              }]
+            });
+          }
+        } catch (error) {
+          console.error('Failed to load focused ZIP boundary:', error);
+        }
         break;
+      }
       case 'city':
-        // For cities, clear ZIP focus
+        // For cities, clear ZIP focus and show all boundaries
         setFocusedZipCode(null);
+        setFocusedZipBoundary(null);
+        setShowOnlyFocusedBoundary(false);
+        focusedZipCodeRef.current = null;
         break;
       case 'county':
         // For counties, show county boundaries
         setFocusedZipCode(null);
+        setFocusedZipBoundary(null);
+        setShowOnlyFocusedBoundary(false);
+        focusedZipCodeRef.current = null;
         setShowCountyBorders(true);
         setSelectedCountyBoundary({ name: result.name, state: result.state });
         break;
       case 'state':
         // For states, show state boundaries
         setFocusedZipCode(null);
+        setFocusedZipBoundary(null);
+        setShowOnlyFocusedBoundary(false);
+        focusedZipCodeRef.current = null;
         // Use functional update to avoid dependency on showStateBoundaries
         setShowStateBoundaries(prev => prev || true);
         break;
@@ -253,6 +304,8 @@ export const MapProvider = ({ children }) => {
     setLoadingZipBoundaries,
     focusedZipCode,
     setFocusedZipCode,
+    focusedZipBoundary,
+    setFocusedZipBoundary,
     showOnlyFocusedBoundary,
     setShowOnlyFocusedBoundary,
     neighboringZips,
@@ -293,6 +346,10 @@ export const MapProvider = ({ children }) => {
     // Marker visibility
     showMarkers,
     setShowMarkers,
+
+    // Hatching pattern toggle
+    showHatching,
+    setShowHatching,
 
     // Refs
     mapRef,

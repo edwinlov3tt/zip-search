@@ -5,6 +5,7 @@ const ZipBoundaryLayer = ({
   zipBoundariesData,
   focusedZipCode,
   showOnlyFocusedBoundary,
+  showHatching,
   removedItems,
   getRemovalKey,
   setRemovedItems,
@@ -20,14 +21,21 @@ const ZipBoundaryLayer = ({
   const geoJsonRef = useRef(null);
   const layersToPatternRef = useRef(new Set());
 
-  // Function to apply diagonal pattern to all tracked layers
+  // Function to apply or remove diagonal pattern from all tracked layers
   const applyPatternsToLayers = useCallback(() => {
     layersToPatternRef.current.forEach(layer => {
       if (layer._path) {
-        layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+        if (showHatching) {
+          layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+        } else {
+          // Remove hatching - set fill to the solid color from the style
+          // Use the fillColor from layer options or default to red
+          const fillColor = layer.options?.fillColor || '#dc2626';
+          layer._path.setAttribute('fill', fillColor);
+        }
       }
     });
-  }, []);
+  }, [showHatching]);
 
   // Apply patterns on map events (zoom, move can recreate SVG paths)
   useEffect(() => {
@@ -47,12 +55,12 @@ const ZipBoundaryLayer = ({
     };
   }, [map, applyPatternsToLayers]);
 
-  // Reapply patterns when data changes
+  // Reapply patterns when data or hatching toggle changes
   useEffect(() => {
     // Small delay to let GeoJSON render
     const timer = setTimeout(applyPatternsToLayers, 100);
     return () => clearTimeout(timer);
-  }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, applyPatternsToLayers]);
+  }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, showHatching, applyPatternsToLayers]);
 
   const handleAddZip = async (zipCode, isExcluded) => {
     try {
@@ -143,7 +151,7 @@ const ZipBoundaryLayer = ({
   return (
     <GeoJSON
       ref={geoJsonRef}
-      key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}`}
+      key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}-${showHatching}`}
       data={(() => {
         if (showOnlyFocusedBoundary && focusedZipCode) {
           const only = zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode);
@@ -216,22 +224,33 @@ const ZipBoundaryLayer = ({
         const isInResults = feature.properties?.inSearchResults;
         const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
 
-        // Track layers that need diagonal pattern
+        // Track layers that may need diagonal pattern
         if (isInResults && !isExcluded) {
           layersToPatternRef.current.add(layer);
 
-          // Apply pattern immediately and on 'add' event
+          // Apply correct fill on 'add' event based on hatching toggle
           layer.on('add', () => {
             setTimeout(() => {
               if (layer._path) {
-                layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+                if (showHatching) {
+                  layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+                } else {
+                  // Ensure solid fill color when hatching is off
+                  const fillColor = layer.options?.fillColor || '#dc2626';
+                  layer._path.setAttribute('fill', fillColor);
+                }
               }
             }, 10);
           });
 
-          // Also try to apply immediately if path exists
+          // Also apply immediately if path exists
           if (layer._path) {
-            layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+            if (showHatching) {
+              layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+            } else {
+              const fillColor = layer.options?.fillColor || '#dc2626';
+              layer._path.setAttribute('fill', fillColor);
+            }
           }
         }
 
@@ -298,9 +317,14 @@ const ZipBoundaryLayer = ({
                   weight: isInResults ? 2.5 : 2,
                   fillOpacity: isInResults ? 0.2 : 0.1
                 });
-                // Reapply pattern on hover if in results
+                // Reapply correct fill on hover if in results
                 if (isInResults && !isExcluded && e.target._path) {
-                  e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                  if (showHatching) {
+                    e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                  } else {
+                    const fillColor = e.target.options?.fillColor || '#dc2626';
+                    e.target._path.setAttribute('fill', fillColor);
+                  }
                 }
               }
             },
@@ -310,9 +334,14 @@ const ZipBoundaryLayer = ({
                   weight: isInResults ? 1.5 : 1,
                   fillOpacity: isInResults ? 0.1 : 0.05
                 });
-                // Reapply pattern on mouseout if in results
+                // Reapply correct fill on mouseout if in results
                 if (isInResults && !isExcluded && e.target._path) {
-                  e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                  if (showHatching) {
+                    e.target._path.setAttribute('fill', 'url(#diagonal-lines)');
+                  } else {
+                    const fillColor = e.target.options?.fillColor || '#dc2626';
+                    e.target._path.setAttribute('fill', fillColor);
+                  }
                 }
               }
             }

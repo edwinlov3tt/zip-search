@@ -23,6 +23,7 @@ const MapContainer = ({
   radiusCenter,
   radiusDisplaySettings,
   handleResultSelect,
+  handleResultDoubleClick,
   geocodingService,
   radiusSearches,
   activeRadiusSearchId
@@ -39,6 +40,7 @@ const MapContainer = ({
     showZipBoundaries,
     zipBoundariesData,
     focusedZipCode,
+    focusedZipBoundary,
     showOnlyFocusedBoundary,
     showStateBoundaries,
     stateBoundariesData,
@@ -48,6 +50,7 @@ const MapContainer = ({
     vtdBoundariesData,
     focusedVtd,
     showMarkers,
+    showHatching,
     neighboringZips,
     setNeighboringZips
   } = useMap();
@@ -60,11 +63,10 @@ const MapContainer = ({
     removedItems,
     getRemovalKey,
     setRemovedItems,
-    setZipResults,
-    updateAggregatedResults
+    setZipResults
   } = useResults();
 
-  const { addressSearches, activeAddressSearchId, removeRadiusSearch } = useSearch();
+  const { addressSearches, activeAddressSearchId, removeRadiusSearch, updateAggregatedResults } = useSearch();
 
   const { activeTab, setActiveTab, setToastMessage, setToastType } = useUI();
 
@@ -133,6 +135,7 @@ const MapContainer = ({
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         handleResultSelect={handleResultSelect}
+        handleResultDoubleClick={handleResultDoubleClick}
         geocodingService={geocodingService}
         removedItems={removedItems}
         getRemovalKey={getRemovalKey}
@@ -153,7 +156,9 @@ const MapContainer = ({
         showZipBoundaries={showZipBoundaries}
         zipBoundariesData={zipBoundariesData}
         focusedZipCode={focusedZipCode}
+        focusedZipBoundary={focusedZipBoundary}
         showOnlyFocusedBoundary={showOnlyFocusedBoundary}
+        showHatching={showHatching}
         showStateBoundaries={showStateBoundaries}
         stateBoundariesData={stateBoundariesData}
         showCityBoundaries={showCityBoundaries}

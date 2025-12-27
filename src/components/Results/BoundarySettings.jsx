@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Settings, ChevronDown, MapPin } from 'lucide-react';
+import { Settings, ChevronDown, MapPin, Layers } from 'lucide-react';
 import { useMap } from '../../contexts/MapContext';
 import { useUI } from '../../contexts/UIContext';
 import { useSearch } from '../../contexts/SearchContext';
@@ -30,7 +30,9 @@ const BoundarySettings = () => {
     setVtdBoundariesData,
     loadingVtdBoundaries,
     showMarkers,
-    setShowMarkers
+    setShowMarkers,
+    showHatching,
+    setShowHatching
   } = useMap();
 
   const { isDarkMode, drawerState, drawerHeight } = useUI();
@@ -137,6 +139,22 @@ const BoundarySettings = () => {
                 type="checkbox"
                 checked={showMarkers}
                 onChange={(e) => setShowMarkers(e.target.checked)}
+                className="rounded"
+              />
+            </label>
+
+            {/* Show Hatching Toggle */}
+            <label className={`flex items-center justify-between text-xs cursor-pointer p-2 rounded transition-colors ${
+              isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+            }`}>
+              <span className="flex items-center space-x-2">
+                <Layers className="h-3 w-3" />
+                <span>Diagonal Fill Pattern</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={showHatching}
+                onChange={(e) => setShowHatching(e.target.checked)}
                 className="rounded"
               />
             </label>

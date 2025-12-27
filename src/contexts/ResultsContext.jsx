@@ -343,82 +343,9 @@ export const ResultsProvider = ({ children }) => {
   }, [filteredZipResults, filteredCityResults, filteredCountyResults, filteredStateResults, filteredAddressResults, filteredGeocodeResults, sortConfig]);
 
   // Result selection handlers with zoom logic
+  // Single click always selects/focuses (use double-click to deselect)
   const handleResultSelect = useCallback(async (type, result) => {
-    // Check if this item is already selected
-    const isAlreadySelected = selectedResult?.type === type && selectedResult?.id === result.id;
-
-    if (isAlreadySelected) {
-      // Deselect the item
-      setSelectedResult(null);
-
-      // Reset view to show all results from active search
-      if (mapInteractionCallback) {
-        // Get all visible results based on the active search
-        let allResults = [];
-
-        // Collect all filtered results based on type
-        switch (type) {
-          case 'zip':
-            allResults = filteredZipResults || [];
-            break;
-          case 'city':
-            allResults = filteredCityResults || [];
-            break;
-          case 'county':
-            allResults = filteredCountyResults || [];
-            break;
-          case 'state':
-            allResults = filteredStateResults || [];
-            break;
-        }
-
-        // Calculate bounds for all results
-        if (allResults.length > 0) {
-          const bounds = {
-            minLat: Infinity,
-            maxLat: -Infinity,
-            minLng: Infinity,
-            maxLng: -Infinity
-          };
-
-          allResults.forEach(item => {
-            const lat = parseFloat(item.lat || item.latitude);
-            const lng = parseFloat(item.lng || item.longitude);
-            if (!isNaN(lat) && !isNaN(lng)) {
-              bounds.minLat = Math.min(bounds.minLat, lat);
-              bounds.maxLat = Math.max(bounds.maxLat, lat);
-              bounds.minLng = Math.min(bounds.minLng, lng);
-              bounds.maxLng = Math.max(bounds.maxLng, lng);
-            }
-          });
-
-          // Validate bounds before calling map interaction
-          if (isFinite(bounds.minLat) && isFinite(bounds.maxLat) &&
-              isFinite(bounds.minLng) && isFinite(bounds.maxLng)) {
-            // Call map interaction to fit bounds
-            await mapInteractionCallback({
-              type: 'fitBounds',
-              bounds: [[bounds.minLat, bounds.minLng], [bounds.maxLat, bounds.maxLng]],
-              padding: 50
-            });
-          } else {
-            console.warn('Invalid bounds calculated, skipping fitBounds', bounds);
-          }
-        }
-      }
-
-      // Close any open popups
-      if (type === 'zip' && markersRef.current[`zip-${result.id}`]) {
-        const marker = markersRef.current[`zip-${result.id}`];
-        if (marker && marker.closePopup) {
-          marker.closePopup();
-        }
-      }
-
-      return; // Exit early since we're deselecting
-    }
-
-    // Otherwise, select the new item
+    // Always select/re-focus the item (deselection is handled by double-click)
     setSelectedResult({ type, id: result.id });
 
     // Ensure we have valid coordinates
@@ -471,13 +398,21 @@ export const ResultsProvider = ({ children }) => {
         }, 500); // Delay to allow map animation to complete
       }
     }
-  }, [mapInteractionCallback, selectedResult, filteredZipResults, filteredCityResults, filteredCountyResults, filteredStateResults]);
+  }, [mapInteractionCallback]);
 
-  const handleResultDoubleClick = useCallback((type, result) => {
+  const handleResultDoubleClick = useCallback(async (type, result) => {
     if (selectedResult && selectedResult.type === type && selectedResult.id === result.id) {
       setSelectedResult(null); // Unselect
+
+      // Also clear the map's focused state by calling with fitBounds type
+      if (mapInteractionCallback) {
+        await mapInteractionCallback({
+          type: 'fitBounds',
+          bounds: null // Will be handled in MapContext to clear focus
+        });
+      }
     }
-  }, [selectedResult]);
+  }, [selectedResult, mapInteractionCallback]);
 
   const isResultSelected = useCallback((type, resultId) => {
     return selectedResult && selectedResult.type === type && selectedResult.id === resultId;

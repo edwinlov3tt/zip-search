@@ -15,7 +15,9 @@ const BoundaryLayers = ({
   showZipBoundaries,
   zipBoundariesData,
   focusedZipCode,
+  focusedZipBoundary,
   showOnlyFocusedBoundary,
+  showHatching,
   showStateBoundaries,
   stateBoundariesData,
   showCityBoundaries,
@@ -59,12 +61,13 @@ const BoundaryLayers = ({
         />
       )}
 
-      {/* ZIP Boundaries Layer */}
+      {/* ZIP Boundaries Layer - Global toggle for all search area boundaries */}
       {showZipBoundaries && zipBoundariesData && (
         <ZipBoundaryLayer
           zipBoundariesData={zipBoundariesData}
           focusedZipCode={focusedZipCode}
           showOnlyFocusedBoundary={showOnlyFocusedBoundary}
+          showHatching={showHatching}
           removedItems={removedItems}
           getRemovalKey={getRemovalKey}
           setRemovedItems={setRemovedItems}
@@ -75,6 +78,21 @@ const BoundaryLayers = ({
           setToastType={setToastType}
           setZipBoundariesData={setZipBoundariesData}
           ZipCodeService={ZipCodeService}
+        />
+      )}
+
+      {/* Focused ZIP Boundary Layer - Shows when a result is clicked (independent of global toggle) */}
+      {!showZipBoundaries && focusedZipBoundary && focusedZipCode && (
+        <GeoJSON
+          key={`focused-zip-${focusedZipCode}`}
+          data={focusedZipBoundary}
+          style={() => ({
+            color: '#ff0000',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.2,
+            fillColor: '#dc2626'
+          })}
         />
       )}
 
