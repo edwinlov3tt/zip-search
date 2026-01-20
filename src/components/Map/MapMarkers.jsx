@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useCallback } from 'react';
 import { Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { useResults } from '../../contexts/ResultsContext';
@@ -156,6 +156,37 @@ const MapMarkers = ({
   // Icon cache to prevent recreating icons on every render
   const iconCacheRef = useRef(new Map());
 
+  // Event handler cache to prevent recreating handler objects on every render
+  const eventHandlerCacheRef = useRef(new Map());
+
+  // ============================================================================
+  // STABLE EVENT HANDLERS - Wrapped in useCallback to maintain reference stability
+  // ============================================================================
+
+  // Core click handler for all marker types
+  const handleMarkerClick = useCallback(async (type, result, targetTab) => {
+    if (activeTab !== targetTab) {
+      setActiveTab(targetTab);
+    }
+    await handleResultSelect(type, result);
+  }, [activeTab, setActiveTab, handleResultSelect]);
+
+  // Core double-click handler for all marker types
+  const handleMarkerDoubleClick = useCallback(async (type, result) => {
+    if (handleResultDoubleClick) {
+      await handleResultDoubleClick(type, result);
+    }
+  }, [handleResultDoubleClick]);
+
+  // Helper to get or create cached event handlers
+  // Uses a generation key to invalidate cache when callbacks change
+  const getEventHandlers = useCallback((cacheKey, createFn) => {
+    if (!eventHandlerCacheRef.current.has(cacheKey)) {
+      eventHandlerCacheRef.current.set(cacheKey, createFn());
+    }
+    return eventHandlerCacheRef.current.get(cacheKey);
+  }, []);
+
   // Filter out removed ZIP results
   const filteredZipResults = zipResults.filter(result =>
     !removedItems.has(getRemovalKey('zip', result))
@@ -207,19 +238,13 @@ const MapMarkers = ({
                 `address-dot-${isActive ? overlayColor : darkenColor(overlayColor, 30)}`,
                 () => createAddressDotIcon(isActive ? overlayColor : darkenColor(overlayColor, 30))
               )}
-              eventHandlers={{
-                click: async () => {
-                  if (activeTab !== 'streets') {
-                    setActiveTab('streets');
-                  }
-                  await handleResultSelect('address', result);
-                },
-                dblclick: async () => {
-                  if (handleResultDoubleClick) {
-                    await handleResultDoubleClick('address', result);
-                  }
-                }
-              }}
+              eventHandlers={getEventHandlers(
+                `address-${result.id}`,
+                () => ({
+                  click: () => handleMarkerClick('address', result, 'streets'),
+                  dblclick: () => handleMarkerDoubleClick('address', result)
+                })
+              )}
             >
               <Popup>
                 <div>
@@ -246,14 +271,12 @@ const MapMarkers = ({
               }
             }}
             icon={geocodeIcon}
-            eventHandlers={{
-              click: async () => {
-                if (activeTab !== 'geocode') {
-                  setActiveTab('geocode');
-                }
-                await handleResultSelect('geocode', result);
-              }
-            }}
+            eventHandlers={getEventHandlers(
+              `geocode-${result.id}`,
+              () => ({
+                click: () => handleMarkerClick('geocode', result, 'geocode')
+              })
+            )}
           >
             <Popup>
               <div>
@@ -292,19 +315,13 @@ const MapMarkers = ({
                 markersRef.current[`zip-${result.id}`] = ref;
               }
             }}
-            eventHandlers={{
-              click: async () => {
-                if (activeTab !== 'zips') {
-                  setActiveTab('zips');
-                }
-                await handleResultSelect('zip', result);
-              },
-              dblclick: async () => {
-                if (handleResultDoubleClick) {
-                  await handleResultDoubleClick('zip', result);
-                }
-              }
-            }}
+            eventHandlers={getEventHandlers(
+              `zip-${result.id}`,
+              () => ({
+                click: () => handleMarkerClick('zip', result, 'zips'),
+                dblclick: () => handleMarkerDoubleClick('zip', result)
+              })
+            )}
           >
             <Popup>
               <div>
