@@ -14,30 +14,13 @@ This document tracks performance and stability issues identified in the map inte
 ### Completed
 
 - [x] **BoundaryManager AbortController** - Add request cancellation to prevent stale data
+- [x] **MapContext value memoization** - Wrap context value in useMemo to prevent cascading re-renders
 
 ---
 
 ### High Priority
 
-#### 1. MapContext value object recreated every render
-**File**: `src/contexts/MapContext.jsx:282-381`
-
-**Problem**: The `value` object is recreated on every render, causing all context consumers to re-render.
-
-**Fix**: Memoize the value object:
-```jsx
-const value = useMemo(() => ({
-  mapType,
-  setMapType,
-  // ... other values
-}), [/* only include values that actually change */]);
-```
-
-**Impact**: Reduces cascading re-renders across all map components.
-
----
-
-#### 2. MapMarkers - Inline icon creation on every render
+#### 1. MapMarkers - Inline icon creation on every render
 **File**: `src/components/Map/MapMarkers.jsx:89-103, 142-161, 236-262, 309-335, 404-430`
 
 **Problem**: `L.divIcon({...})` creates new icon instances on every render for every marker.

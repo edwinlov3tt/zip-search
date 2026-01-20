@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import zipBoundariesService from '../services/zipBoundariesService';
 import stateBoundariesService from '../services/stateBoundariesService';
 
@@ -279,7 +279,7 @@ export const MapProvider = ({ children }) => {
     // Note: Loading happens in GeoApplication based on search results
   }, [showVtdBoundaries]);
 
-  const value = {
+  const value = useMemo(() => ({
     // Map state
     mapType,
     setMapType,
@@ -378,7 +378,46 @@ export const MapProvider = ({ children }) => {
     setOnShapeCreatedCallback,
     setOnShapeDeletedCallback,
     handleResultMapInteraction
-  };
+  }), [
+    // State values that trigger re-renders when changed
+    mapType,
+    mapCenter,
+    mapZoom,
+    currentViewport,
+    drawnShapes,
+    isSearchMode,
+    showCountyBorders,
+    countyBoundaries,
+    selectedCountyBoundary,
+    showZipBoundaries,
+    zipBoundariesData,
+    loadingZipBoundaries,
+    focusedZipCode,
+    focusedZipBoundary,
+    showOnlyFocusedBoundary,
+    neighboringZips,
+    loadingNeighbors,
+    showStateBoundaries,
+    stateBoundariesData,
+    loadingStateBoundaries,
+    showCityBoundaries,
+    cityBoundariesData,
+    loadingCityBoundaries,
+    showVtdBoundaries,
+    vtdBoundariesData,
+    loadingVtdBoundaries,
+    focusedVtd,
+    showMapLayers,
+    showMarkers,
+    showHatching,
+    cursorTool,
+    // Callbacks (included for completeness, though most are stable)
+    handleMapClick,
+    handleViewportChange,
+    onCreated,
+    onDeleted,
+    handleResultMapInteraction
+  ]);
 
   return <MapContext.Provider value={value}>{children}</MapContext.Provider>;
 };
