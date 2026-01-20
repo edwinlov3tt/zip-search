@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useRef } from 'react';
 import { Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { useResults } from '../../contexts/ResultsContext';
@@ -12,6 +12,119 @@ const darkenColor = (hex, percent = 30) => {
   const g = Math.max(0, ((num >> 8) & 0x00FF) - Math.round(255 * (percent / 100)));
   const b = Math.max(0, (num & 0x0000FF) - Math.round(255 * (percent / 100)));
   return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+};
+
+// ============================================================================
+// STATIC ICONS - Created once, reused across all renders
+// ============================================================================
+
+// Geocode marker icon (blue map pin)
+const geocodeIcon = L.divIcon({
+  html: `
+    <div style="
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #3b82f6;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    ">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="32" height="32">
+        <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+      </svg>
+    </div>
+  `,
+  className: 'geocode-marker',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32]
+});
+
+// Target marker icon (red dot for search center)
+const targetMarkerIcon = L.divIcon({
+  html: `
+    <div style="
+      width: 20px;
+      height: 20px;
+      background: #dc2626;
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      position: relative;
+    ">
+      <div style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 2px;
+        background: white;
+        border-radius: 50%;
+      "></div>
+    </div>
+  `,
+  className: 'target-marker',
+  iconSize: [26, 26],
+  iconAnchor: [13, 13]
+});
+
+// ============================================================================
+// ICON FACTORIES - Create and cache icons based on parameters
+// ============================================================================
+
+// Factory for address dot markers (small 8px dots)
+const createAddressDotIcon = (color) => L.divIcon({
+  html: `
+    <div style="
+      width: 8px;
+      height: 8px;
+      background: ${color};
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    "></div>
+  `,
+  className: 'address-marker-dot',
+  iconSize: [8, 8],
+  iconAnchor: [4, 4]
+});
+
+// Factory for center markers (used for radius and address search centers)
+const createCenterMarkerIcon = (color, isActive, className) => L.divIcon({
+  html: `
+    <div style="
+      width: ${isActive ? '20px' : '16px'};
+      height: ${isActive ? '20px' : '16px'};
+      background: ${color};
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      position: relative;
+    ">
+      <div style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 2px;
+        background: white;
+        border-radius: 50%;
+      "></div>
+    </div>
+  `,
+  className: `${className} ${isActive ? 'active' : ''}`,
+  iconSize: isActive ? [24, 24] : [20, 20],
+  iconAnchor: isActive ? [12, 12] : [10, 10]
+});
+
+// Helper to get or create cached icon
+const getOrCreateIcon = (cache, key, createFn) => {
+  if (!cache.has(key)) {
+    cache.set(key, createFn());
+  }
+  return cache.get(key);
 };
 
 const MapMarkers = ({
@@ -39,6 +152,9 @@ const MapMarkers = ({
 }) => {
   // Get markersRef from ResultsContext to allow popup control
   const { markersRef } = useResults();
+
+  // Icon cache to prevent recreating icons on every render
+  const iconCacheRef = useRef(new Map());
 
   // Filter out removed ZIP results
   const filteredZipResults = zipResults.filter(result =>
@@ -86,21 +202,11 @@ const MapMarkers = ({
                   markersRef.current[`address-${result.id}`] = ref;
                 }
               }}
-              icon={L.divIcon({
-                html: `
-                  <div style="
-                    width: 8px;
-                    height: 8px;
-                    background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
-                    border: 2px solid white;
-                    border-radius: 50%;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-                  "></div>
-                `,
-                className: 'address-marker-dot',
-                iconSize: [8, 8],
-                iconAnchor: [4, 4]
-              })}
+              icon={getOrCreateIcon(
+                iconCacheRef.current,
+                `address-dot-${isActive ? overlayColor : darkenColor(overlayColor, 30)}`,
+                () => createAddressDotIcon(isActive ? overlayColor : darkenColor(overlayColor, 30))
+              )}
               eventHandlers={{
                 click: async () => {
                   if (activeTab !== 'streets') {
@@ -139,26 +245,7 @@ const MapMarkers = ({
                 markersRef.current[`geocode-${result.id}`] = ref;
               }
             }}
-            icon={L.divIcon({
-              html: `
-                <div style="
-                  width: 32px;
-                  height: 32px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  color: #3b82f6;
-                  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-                ">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="32" height="32">
-                    <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-                  </svg>
-                </div>
-              `,
-              className: 'geocode-marker',
-              iconSize: [32, 32],
-              iconAnchor: [16, 32]
-            })}
+            icon={geocodeIcon}
             eventHandlers={{
               click: async () => {
                 if (activeTab !== 'geocode') {
@@ -233,33 +320,7 @@ const MapMarkers = ({
       {showMarkers && searchMode === 'radius' && selectedLocation && (
         <Marker
           position={[selectedLocation.lat, selectedLocation.lng]}
-          icon={L.divIcon({
-            html: `
-              <div style="
-                width: 20px;
-                height: 20px;
-                background: #dc2626;
-                border: 3px solid white;
-                border-radius: 50%;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                position: relative;
-              ">
-                <div style="
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  width: 2px;
-                  height: 2px;
-                  background: white;
-                  border-radius: 50%;
-                "></div>
-              </div>
-            `,
-            className: 'target-marker',
-            iconSize: [26, 26],
-            iconAnchor: [13, 13]
-          })}
+          icon={targetMarkerIcon}
         >
           <Popup>
             <div className="p-2 min-w-[200px]">
@@ -306,33 +367,15 @@ const MapMarkers = ({
             {shouldShowMarker && (
               <Marker
                 position={search.center}
-                icon={L.divIcon({
-                  html: `
-                    <div style="
-                      width: ${isActive ? '20px' : '16px'};
-                      height: ${isActive ? '20px' : '16px'};
-                      background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
-                      border: 2px solid white;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      position: relative;
-                    ">
-                      <div style="
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        width: 2px;
-                        height: 2px;
-                        background: white;
-                        border-radius: 50%;
-                      "></div>
-                    </div>
-                  `,
-                  className: `radius-center-marker ${isActive ? 'active' : ''}`,
-                  iconSize: isActive ? [24, 24] : [20, 20],
-                  iconAnchor: isActive ? [12, 12] : [10, 10]
-                })}
+                icon={getOrCreateIcon(
+                  iconCacheRef.current,
+                  `radius-center-${isActive}-${overlayColor}`,
+                  () => createCenterMarkerIcon(
+                    isActive ? overlayColor : darkenColor(overlayColor, 30),
+                    isActive,
+                    'radius-center-marker'
+                  )
+                )}
               >
                 <Popup>
                   <div className="p-2 min-w-[200px]">
@@ -401,33 +444,15 @@ const MapMarkers = ({
             {shouldShowMarker && (
               <Marker
                 position={search.center}
-                icon={L.divIcon({
-                  html: `
-                    <div style="
-                      width: ${isActive ? '20px' : '16px'};
-                      height: ${isActive ? '20px' : '16px'};
-                      background: ${isActive ? overlayColor : darkenColor(overlayColor, 30)};
-                      border: 2px solid white;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      position: relative;
-                    ">
-                      <div style="
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        width: 2px;
-                        height: 2px;
-                        background: white;
-                        border-radius: 50%;
-                      "></div>
-                    </div>
-                  `,
-                  className: `address-center-marker ${isActive ? 'active' : ''}`,
-                  iconSize: isActive ? [24, 24] : [20, 20],
-                  iconAnchor: isActive ? [12, 12] : [10, 10]
-                })}
+                icon={getOrCreateIcon(
+                  iconCacheRef.current,
+                  `address-center-${isActive}-${overlayColor}`,
+                  () => createCenterMarkerIcon(
+                    isActive ? overlayColor : darkenColor(overlayColor, 30),
+                    isActive,
+                    'address-center-marker'
+                  )
+                )}
               >
                 <Popup>
                   <div className="p-2 min-w-[200px]">
