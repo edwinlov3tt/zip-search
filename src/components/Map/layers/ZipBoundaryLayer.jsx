@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { GeoJSON, useMap } from 'react-leaflet';
 
 const ZipBoundaryLayer = ({
@@ -20,6 +20,9 @@ const ZipBoundaryLayer = ({
   const map = useMap();
   const geoJsonRef = useRef(null);
   const layersToPatternRef = useRef(new Set());
+
+  // Loading state to prevent double-clicks on Add ZIP button
+  const [isAddingZip, setIsAddingZip] = useState(false);
 
   // Function to apply or remove diagonal pattern from all tracked layers
   const applyPatternsToLayers = useCallback(() => {
@@ -131,6 +134,10 @@ const ZipBoundaryLayer = ({
   }, [focusedZipCode, removedItems, getRemovalKey, showOnlyFocusedBoundary, showHatching]);
 
   const handleAddZip = async (zipCode, isExcluded) => {
+    // Prevent double-clicks or rapid invocations
+    if (isAddingZip) return;
+    setIsAddingZip(true);
+
     try {
       if (isExcluded) {
         // Remove from excluded items
@@ -213,6 +220,8 @@ const ZipBoundaryLayer = ({
       setToastMessage(`Error adding ZIP ${zipCode}`);
       setToastType('error');
       setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsAddingZip(false);
     }
   };
 

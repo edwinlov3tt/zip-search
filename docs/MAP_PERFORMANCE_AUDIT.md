@@ -19,36 +19,13 @@ This document tracks performance and stability issues identified in the map inte
 - [x] **MapMarkers inline icon creation** - Cache icons with factory functions to prevent recreation on every render
 - [x] **MapMarkers inline eventHandlers** - Cache event handler objects and use stable useCallback handlers
 - [x] **GeoJSON key remount on focus** - Remove focusedZipCode from key, use dynamic style updates instead
-
----
-
-### High Priority
-
-#### 1. ZipBoundaryLayer.handleAddZip - No loading state guard
-**File**: `src/components/Map/layers/ZipBoundaryLayer.jsx:65-149`
-
-**Problem**: No protection against double-clicks or rapid invocations.
-
-**Fix**: Add loading state and early return:
-```jsx
-const [isAdding, setIsAdding] = useState(false);
-
-const handleAddZip = async (zipCode, isExcluded) => {
-  if (isAdding) return;
-  setIsAdding(true);
-  try {
-    // ...existing logic
-  } finally {
-    setIsAdding(false);
-  }
-};
-```
+- [x] **ZipBoundaryLayer loading guard** - Add isAddingZip state to prevent double-clicks on Add ZIP button
 
 ---
 
 ### Medium Priority
 
-#### 2. MapContext - Effects clearing data on toggle off
+#### 1. MapContext - Effects clearing data on toggle off
 **File**: `src/contexts/MapContext.jsx:251-280`
 
 **Problem**: Multiple effects that just clear state when toggles turn off are essentially derived state.
@@ -61,7 +38,7 @@ const effectiveZipBoundariesData = showZipBoundaries ? zipBoundariesData : null;
 
 ---
 
-#### 3. ZipBoundaryLayer - Multiple setTimeout effects with magic delays
+#### 2. ZipBoundaryLayer - Multiple setTimeout effects with magic delays
 **File**: `src/components/Map/layers/ZipBoundaryLayer.jsx:41-63`
 
 **Problem**: Magic timeouts (50ms, 100ms) are fragile and can fail on slow devices.
@@ -70,7 +47,7 @@ const effectiveZipBoundariesData = showZipBoundaries ? zipBoundariesData : null;
 
 ---
 
-#### 4. MapController - Many useEffects with overlapping concerns
+#### 3. MapController - Many useEffects with overlapping concerns
 **File**: `src/components/Map/MapController.jsx`
 
 **Problem**: 7 separate useEffects, some could be consolidated.
@@ -79,7 +56,7 @@ const effectiveZipBoundariesData = showZipBoundaries ? zipBoundariesData : null;
 
 ---
 
-#### 5. MapContainer - Inline object in style prop
+#### 4. MapContainer - Inline object in style prop
 **File**: `src/components/Map/MapContainer.jsx:103-105`
 
 **Problem**:
@@ -95,7 +72,7 @@ style={{
 
 ### Lower Priority
 
-#### 6. BoundaryLayers - Passing too many props
+#### 5. BoundaryLayers - Passing too many props
 **File**: `src/components/Map/BoundaryLayers.jsx:11-43`
 
 **Problem**: Component receives 26+ props passed through multiple layers.
@@ -104,7 +81,7 @@ style={{
 
 ---
 
-#### 7. MapContext.handleResultMapInteraction - Partial race protection
+#### 6. MapContext.handleResultMapInteraction - Partial race protection
 **File**: `src/contexts/MapContext.jsx:87-176`
 
 **Problem**: Uses ref to guard stale updates but request still completes.
@@ -113,7 +90,7 @@ style={{
 
 ---
 
-#### 8. NeighborZipsLayer.handleAddNeighborZip - No loading guard
+#### 7. NeighborZipsLayer.handleAddNeighborZip - No loading guard
 **File**: `src/components/Map/layers/NeighborZipsLayer.jsx:22`
 
 **Problem**: Same double-click vulnerability as ZipBoundaryLayer.
