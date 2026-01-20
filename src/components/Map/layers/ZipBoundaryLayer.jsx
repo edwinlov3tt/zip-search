@@ -62,6 +62,74 @@ const ZipBoundaryLayer = ({
     return () => clearTimeout(timer);
   }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, showHatching, applyPatternsToLayers]);
 
+  // Effect to update styles when focusedZipCode changes (without full remount)
+  // This allows smooth focus transitions without rebuilding all GeoJSON layers
+  useEffect(() => {
+    if (!geoJsonRef.current || showOnlyFocusedBoundary) return;
+
+    // Re-apply styles to all layers based on current focus
+    geoJsonRef.current.eachLayer((layer) => {
+      const feature = layer.feature;
+      if (!feature) return;
+
+      const zipCode = feature.properties?.zipcode;
+      const isInResults = feature.properties?.inSearchResults;
+      const isFocused = zipCode === focusedZipCode;
+      const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
+      const isAdditional = feature.properties?.isAdditional;
+
+      // Apply appropriate style based on state
+      if (isFocused) {
+        layer.setStyle({
+          color: '#ff0000',
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 0.2,
+          fillColor: '#dc2626'
+        });
+      } else if (isExcluded) {
+        layer.setStyle({
+          color: '#ef4444',
+          weight: 2,
+          opacity: 0.7,
+          fillOpacity: 0.08,
+          fillColor: '#ef4444',
+          dashArray: '10, 5, 2, 5'
+        });
+      } else if (isInResults) {
+        layer.setStyle({
+          color: '#dc2626',
+          weight: 1.5,
+          opacity: 0.8,
+          fillOpacity: 0.25,
+          fillColor: '#dc2626',
+          dashArray: null
+        });
+        // Reapply hatching pattern if enabled
+        if (showHatching && layer._path) {
+          layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+        }
+      } else if (isAdditional) {
+        layer.setStyle({
+          color: '#2563eb',
+          weight: 2,
+          opacity: 0.9,
+          fillOpacity: 0.08,
+          fillColor: '#3b82f6',
+          dashArray: '8, 3, 2, 3'
+        });
+      } else {
+        layer.setStyle({
+          color: '#9ca3af',
+          weight: 1,
+          opacity: 0.5,
+          fillOpacity: 0.02,
+          dashArray: null
+        });
+      }
+    });
+  }, [focusedZipCode, removedItems, getRemovalKey, showOnlyFocusedBoundary, showHatching]);
+
   const handleAddZip = async (zipCode, isExcluded) => {
     try {
       if (isExcluded) {
@@ -151,7 +219,7 @@ const ZipBoundaryLayer = ({
   return (
     <GeoJSON
       ref={geoJsonRef}
-      key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}-${showHatching}`}
+      key={`zip-boundaries-${zipBoundariesData.features.length}-${showOnlyFocusedBoundary ? focusedZipCode : 'all'}-${showOnlyFocusedBoundary}-${showHatching}`}
       data={(() => {
         if (showOnlyFocusedBoundary && focusedZipCode) {
           const only = zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode);
