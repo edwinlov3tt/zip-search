@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMap } from '../../contexts/MapContext';
 import { useResults } from '../../contexts/ResultsContext';
 import { useSearch } from '../../contexts/SearchContext';
@@ -11,6 +11,11 @@ import countyFipsService from '../../services/countyFipsService';
 /**
  * BoundaryManager - Handles loading boundary data based on toggles and search results
  * This component doesn't render anything, it just manages data loading effects
+ *
+ * All async operations use AbortController to prevent:
+ * - Stale data from overwriting current data on rapid toggles
+ * - State updates after component unmount
+ * - Race conditions when results change quickly
  */
 const BoundaryManager = () => {
   const {
@@ -29,154 +34,212 @@ const BoundaryManager = () => {
   } = useMap();
 
   const { zipResults, cityResults, geocodeResults, addressResults } = useResults();
-  const { searchPerformed, searchMode, radiusCenter, radius } = useSearch();
+  const { searchPerformed, searchMode } = useSearch();
 
-  // Refs to track loading state
+  // Refs to track what's already been loaded (deduplication)
   const lastStateLoadRef = useRef(false);
+  const lastZipCodesRef = useRef('');
   const lastCityKeysRef = useRef('');
-  const lastVtdStatesRef = useRef('');
+  const lastVtdFipsRef = useRef('');
 
-  // Load ALL U.S. state boundaries (50 states + DC + PR)
-  const loadAllStateBoundaries = useCallback(async () => {
-    if (!showStateBoundaries) return;
-    if (lastStateLoadRef.current) return; // Already loaded
-
-    console.log('[State Boundaries] Loading all U.S. states...');
-    setLoadingStateBoundaries(true);
-    lastStateLoadRef.current = true;
-
-    try {
-      // All 50 states + DC + Puerto Rico (2-letter codes)
-      const allStateCodes = [
-        'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-        'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-        'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-        'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-        'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-        'DC', 'PR'
-      ];
-
-      const features = [];
-      const batchSize = 10;
-
-      for (let i = 0; i < allStateCodes.length; i += batchSize) {
-        const batch = allStateCodes.slice(i, i + batchSize);
-        console.log(`[State Boundaries] Loading batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(allStateCodes.length/batchSize)}`);
-
-        const batchFeatures = await Promise.all(
-          batch.map(code => stateBoundariesService.getStateBoundary(code, true))
-        );
-
-        features.push(...batchFeatures.filter(Boolean));
-      }
-
-      const geojson = {
-        type: 'FeatureCollection',
-        features
-      };
-
-      setStateBoundariesData(geojson);
-      console.log(`[State Boundaries] Loaded ${features.length} state boundaries`);
-    } catch (error) {
-      console.error('[State Boundaries] Error loading:', error);
-    } finally {
-      setLoadingStateBoundaries(false);
+  // Effect: Load state boundaries when toggled on
+  useEffect(() => {
+    if (!showStateBoundaries) {
+      setStateBoundariesData(null);
+      lastStateLoadRef.current = false;
+      return;
     }
+
+    // Skip if already loaded
+    if (lastStateLoadRef.current) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
+    const loadStateBoundaries = async () => {
+      console.log('[State Boundaries] Loading all U.S. states...');
+      setLoadingStateBoundaries(true);
+      lastStateLoadRef.current = true;
+
+      try {
+        const allStateCodes = [
+          'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+          'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+          'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+          'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+          'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+          'DC', 'PR'
+        ];
+
+        const features = [];
+        const batchSize = 10;
+
+        for (let i = 0; i < allStateCodes.length; i += batchSize) {
+          // Check if aborted before each batch
+          if (signal.aborted) {
+            console.log('[State Boundaries] Load aborted');
+            return;
+          }
+
+          const batch = allStateCodes.slice(i, i + batchSize);
+          console.log(`[State Boundaries] Loading batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(allStateCodes.length/batchSize)}`);
+
+          const batchFeatures = await Promise.all(
+            batch.map(code => stateBoundariesService.getStateBoundary(code, true))
+          );
+
+          features.push(...batchFeatures.filter(Boolean));
+        }
+
+        // Final abort check before setting state
+        if (signal.aborted) {
+          console.log('[State Boundaries] Load aborted before setState');
+          return;
+        }
+
+        const geojson = {
+          type: 'FeatureCollection',
+          features
+        };
+
+        setStateBoundariesData(geojson);
+        console.log(`[State Boundaries] Loaded ${features.length} state boundaries`);
+      } catch (error) {
+        if (signal.aborted) return;
+        console.error('[State Boundaries] Error loading:', error);
+      } finally {
+        if (!signal.aborted) {
+          setLoadingStateBoundaries(false);
+        }
+      }
+    };
+
+    loadStateBoundaries();
+
+    return () => {
+      abortController.abort();
+      setLoadingStateBoundaries(false);
+    };
   }, [showStateBoundaries, setStateBoundariesData, setLoadingStateBoundaries]);
 
-  // Load ZIP boundaries for search results
-  const loadZipBoundariesForResults = useCallback(async () => {
-    // Check if we should load boundaries
+  // Effect: Load ZIP boundaries when toggled on or when search results change
+  useEffect(() => {
+    if (!showZipBoundaries) {
+      setZipBoundariesData(null);
+      lastZipCodesRef.current = '';
+      return;
+    }
+
+    // Check if we have any results to load boundaries for
     const hasZipResults = zipResults && zipResults.length > 0;
     const hasGeocodeResults = searchMode === 'geocode' && geocodeResults && geocodeResults.length > 0;
     const hasAddressResults = searchMode === 'address' && addressResults && addressResults.length > 0;
 
-    if (!showZipBoundaries) {
-      return;
-    }
-
     if (!hasZipResults && !hasGeocodeResults && !hasAddressResults) {
-      console.log('[ZIP Boundaries] Skipping load:', {
-        showZipBoundaries,
-        zipCount: zipResults?.length || 0,
-        geocodeCount: geocodeResults?.length || 0,
-        addressCount: addressResults?.length || 0,
-        searchMode
-      });
+      console.log('[ZIP Boundaries] Skipping load - no results');
       return;
     }
 
-    console.log('[ZIP Boundaries] Loading boundaries for results');
-    setLoadingZipBoundaries(true);
+    // Extract unique ZIP codes
+    const allZipCodes = new Set();
 
-    try {
-      // Extract unique ZIP codes from all available sources
-      const allZipCodes = new Set();
-
-      // From normal ZIP search results
-      if (hasZipResults) {
-        zipResults.forEach(result => {
-          const zip = result.zipCode || result.zipcode;
-          if (zip) allZipCodes.add(zip);
-        });
-      }
-
-      // From geocoded addresses
-      if (hasGeocodeResults) {
-        geocodeResults.forEach(result => {
-          if (result.zip) allZipCodes.add(result.zip);
-        });
-      }
-
-      // From address search results
-      if (hasAddressResults) {
-        addressResults.forEach(result => {
-          if (result.postcode) allZipCodes.add(result.postcode);
-        });
-      }
-
-      const resultZipCodes = Array.from(allZipCodes);
-      console.log('[ZIP Boundaries] Unique ZIP codes:', resultZipCodes.length);
-
-      // Fetch boundaries from TIGER API
-      const boundariesData = await zipBoundariesService.getMultipleZipBoundaries(
-        resultZipCodes,
-        true // simplified
-      );
-
-      console.log('[ZIP Boundaries] Received', boundariesData?.features?.length || 0, 'features');
-
-      if (boundariesData && boundariesData.features.length > 0) {
-        // Mark features as being in search results
-        boundariesData.features.forEach(feature => {
-          const zipCode = feature.properties?.zipcode;
-          feature.properties.inSearchResults = resultZipCodes.includes(zipCode);
-        });
-
-        setZipBoundariesData(boundariesData);
-        console.log('[ZIP Boundaries] Successfully set boundary data');
-      } else {
-        console.warn('[ZIP Boundaries] No features returned from TIGER API');
-      }
-    } catch (error) {
-      console.error('[ZIP Boundaries] Error loading:', error);
-    } finally {
-      setLoadingZipBoundaries(false);
+    if (hasZipResults) {
+      zipResults.forEach(result => {
+        const zip = result.zipCode || result.zipcode;
+        if (zip) allZipCodes.add(zip);
+      });
     }
+
+    if (hasGeocodeResults) {
+      geocodeResults.forEach(result => {
+        if (result.zip) allZipCodes.add(result.zip);
+      });
+    }
+
+    if (hasAddressResults) {
+      addressResults.forEach(result => {
+        if (result.postcode) allZipCodes.add(result.postcode);
+      });
+    }
+
+    const resultZipCodes = Array.from(allZipCodes).sort();
+    const zipCodesKey = resultZipCodes.join(',');
+
+    // Skip if we already loaded these exact ZIP codes
+    if (zipCodesKey === lastZipCodesRef.current) {
+      console.log('[ZIP Boundaries] Already loaded these ZIP codes');
+      return;
+    }
+
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
+    const loadZipBoundaries = async () => {
+      console.log('[ZIP Boundaries] Loading boundaries for', resultZipCodes.length, 'ZIP codes');
+      setLoadingZipBoundaries(true);
+
+      try {
+        const boundariesData = await zipBoundariesService.getMultipleZipBoundaries(
+          resultZipCodes,
+          true // simplified
+        );
+
+        // Check if aborted before setting state
+        if (signal.aborted) {
+          console.log('[ZIP Boundaries] Load aborted before setState');
+          return;
+        }
+
+        console.log('[ZIP Boundaries] Received', boundariesData?.features?.length || 0, 'features');
+
+        if (boundariesData && boundariesData.features.length > 0) {
+          // Mark features as being in search results
+          boundariesData.features.forEach(feature => {
+            const zipCode = feature.properties?.zipcode;
+            feature.properties.inSearchResults = resultZipCodes.includes(zipCode);
+          });
+
+          lastZipCodesRef.current = zipCodesKey;
+          setZipBoundariesData(boundariesData);
+          console.log('[ZIP Boundaries] Successfully set boundary data');
+        } else {
+          console.warn('[ZIP Boundaries] No features returned from TIGER API');
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        console.error('[ZIP Boundaries] Error loading:', error);
+      } finally {
+        if (!signal.aborted) {
+          setLoadingZipBoundaries(false);
+        }
+      }
+    };
+
+    loadZipBoundaries();
+
+    return () => {
+      abortController.abort();
+      setLoadingZipBoundaries(false);
+    };
   }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, setZipBoundariesData, setLoadingZipBoundaries]);
 
-  // Load city boundaries for city results
-  const loadCityBoundariesForResults = useCallback(async () => {
-    if (!showCityBoundaries || !cityResults || cityResults.length === 0) {
-      console.log('[City Boundaries] Skipping load:', {
-        showCityBoundaries,
-        cityCount: cityResults?.length || 0
-      });
+  // Effect: Load city boundaries when toggled on or when city results change
+  useEffect(() => {
+    if (!showCityBoundaries) {
+      setCityBoundariesData(null);
+      lastCityKeysRef.current = '';
       return;
     }
 
-    // Create unique keys for cities (name|state)
-    const cityKeys = [...new Set(cityResults.map(c => `${c.name}|${c.state}`))];
+    if (!cityResults || cityResults.length === 0) {
+      console.log('[City Boundaries] Skipping load - no city results');
+      return;
+    }
+
+    // Create unique keys for cities
+    const cityKeys = [...new Set(cityResults.map(c => `${c.name}|${c.state}`))].sort();
     const keysStr = cityKeys.join(',');
 
     // Skip if we already loaded these cities
@@ -184,63 +247,92 @@ const BoundaryManager = () => {
       console.log('[City Boundaries] Already loaded these cities');
       return;
     }
-    lastCityKeysRef.current = keysStr;
 
-    console.log(`[City Boundaries] Loading boundaries for ${cityKeys.length} cities`);
-    setLoadingCityBoundaries(true);
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
-    try {
-      const features = [];
-      const batchSize = 20;
+    const loadCityBoundaries = async () => {
+      console.log(`[City Boundaries] Loading boundaries for ${cityKeys.length} cities`);
+      setLoadingCityBoundaries(true);
 
-      for (let i = 0; i < cityKeys.length; i += batchSize) {
-        const batch = cityKeys.slice(i, i + batchSize);
-        console.log(`[City Boundaries] Loading batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(cityKeys.length/batchSize)}`);
+      try {
+        const features = [];
+        const batchSize = 20;
 
-        const batchFeatures = await Promise.all(
-          batch.map(key => {
-            const [name, state] = key.split('|');
-            console.log(`[City Boundaries] Fetching: ${name}, ${state}`);
-            return cityBoundariesService.getCityBoundary(name, state, true);
-          })
-        );
+        for (let i = 0; i < cityKeys.length; i += batchSize) {
+          // Check if aborted before each batch
+          if (signal.aborted) {
+            console.log('[City Boundaries] Load aborted');
+            return;
+          }
 
-        features.push(...batchFeatures.filter(Boolean));
+          const batch = cityKeys.slice(i, i + batchSize);
+          console.log(`[City Boundaries] Loading batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(cityKeys.length/batchSize)}`);
+
+          const batchFeatures = await Promise.all(
+            batch.map(key => {
+              const [name, state] = key.split('|');
+              return cityBoundariesService.getCityBoundary(name, state, true);
+            })
+          );
+
+          features.push(...batchFeatures.filter(Boolean));
+        }
+
+        // Final abort check before setting state
+        if (signal.aborted) {
+          console.log('[City Boundaries] Load aborted before setState');
+          return;
+        }
+
+        const geojson = {
+          type: 'FeatureCollection',
+          features
+        };
+
+        lastCityKeysRef.current = keysStr;
+        setCityBoundariesData(geojson);
+        console.log(`[City Boundaries] Loaded ${features.length} city boundaries`);
+      } catch (error) {
+        if (signal.aborted) return;
+        console.error('[City Boundaries] Error loading:', error);
+      } finally {
+        if (!signal.aborted) {
+          setLoadingCityBoundaries(false);
+        }
       }
+    };
 
-      const geojson = {
-        type: 'FeatureCollection',
-        features
-      };
+    loadCityBoundaries();
 
-      setCityBoundariesData(geojson);
-      console.log(`[City Boundaries] Loaded ${features.length} city boundaries`);
-    } catch (error) {
-      console.error('[City Boundaries] Error loading:', error);
-    } finally {
+    return () => {
+      abortController.abort();
       setLoadingCityBoundaries(false);
-    }
+    };
   }, [showCityBoundaries, cityResults, setCityBoundariesData, setLoadingCityBoundaries]);
 
-  // Load VTD boundaries for search results area (county-based approach)
-  const loadVtdBoundariesForResults = useCallback(async () => {
+  // Effect: Load VTD boundaries when toggled on or when results change
+  useEffect(() => {
+    if (!showVtdBoundaries) {
+      setVtdBoundariesData(null);
+      lastVtdFipsRef.current = '';
+      return;
+    }
+
+    // Check if we have any data to derive counties from
     const hasData = (zipResults && zipResults.length > 0) ||
                     (cityResults && cityResults.length > 0) ||
                     (geocodeResults && geocodeResults.length > 0) ||
                     (addressResults && addressResults.length > 0);
 
-    if (!showVtdBoundaries || !hasData) {
-      console.log('[VTD Boundaries] Skipping load:', {
-        showVtdBoundaries,
-        hasData
-      });
+    if (!hasData) {
+      console.log('[VTD Boundaries] Skipping load - no results');
       return;
     }
 
-    // Extract unique counties from all available result sources
-    const uniqueCounties = new Map(); // Map<"County,State", {county, state}>
+    // Extract unique counties from all result sources
+    const uniqueCounties = new Map();
 
-    // Get counties from ZIP results
     if (zipResults && zipResults.length > 0) {
       zipResults.forEach(result => {
         if (result.county && result.state) {
@@ -252,7 +344,6 @@ const BoundaryManager = () => {
       });
     }
 
-    // Get counties from city results
     if (cityResults && cityResults.length > 0) {
       cityResults.forEach(result => {
         if (result.county && result.state) {
@@ -264,7 +355,6 @@ const BoundaryManager = () => {
       });
     }
 
-    // Get counties from geocode results (if county field exists in CSV)
     if (geocodeResults && geocodeResults.length > 0) {
       geocodeResults.forEach(result => {
         if (result.county && result.state) {
@@ -276,27 +366,12 @@ const BoundaryManager = () => {
       });
     }
 
-    // Get counties from address search results (derive from city if available)
-    if (addressResults && addressResults.length > 0) {
-      addressResults.forEach(result => {
-        if (result.city && result.state) {
-          // We'll try to derive county from city using the FIPS service
-          // For now, just skip if no direct county field
-          // The FIPS service can handle city->county mapping
-        }
-      });
-    }
-
     if (uniqueCounties.size === 0) {
       console.log('[VTD Boundaries] No counties found in results');
       return;
     }
 
     const counties = Array.from(uniqueCounties.values());
-    console.log(`[VTD Boundaries] Found ${counties.length} unique counties in results:`,
-      counties.map(c => `${c.county}, ${c.state}`));
-
-    // Convert county names to FIPS codes
     const countyFipsCodes = countyFipsService.getMultipleCountyFips(counties);
 
     if (countyFipsCodes.length === 0) {
@@ -304,77 +379,58 @@ const BoundaryManager = () => {
       return;
     }
 
-    // Create cache key based on county FIPS codes
+    // Create cache key based on FIPS codes
     const fipsKey = countyFipsCodes.sort().join(',');
 
     // Skip if we already loaded VTDs for these counties
-    if (fipsKey === lastVtdStatesRef.current) {
+    if (fipsKey === lastVtdFipsRef.current) {
       console.log('[VTD Boundaries] Already loaded VTDs for these counties');
       return;
     }
-    lastVtdStatesRef.current = fipsKey;
 
-    console.log(`[VTD Boundaries] Loading VTDs for ${countyFipsCodes.length} counties (FIPS):`, countyFipsCodes);
-    setLoadingVtdBoundaries(true);
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
-    try {
-      // Query VTDs by county FIPS codes
-      const boundariesData = await vtdBoundariesService.getVtdBoundariesForCounties(
-        countyFipsCodes,
-        true // simplified geometry
-      );
+    const loadVtdBoundaries = async () => {
+      console.log(`[VTD Boundaries] Loading VTDs for ${countyFipsCodes.length} counties`);
+      setLoadingVtdBoundaries(true);
 
-      if (boundariesData && boundariesData.features.length > 0) {
-        setVtdBoundariesData(boundariesData);
-        console.log(`[VTD Boundaries] Loaded ${boundariesData.features.length} VTD boundaries for ${countyFipsCodes.length} counties`);
-      } else {
-        console.warn('[VTD Boundaries] No VTD features returned for counties:', countyFipsCodes);
+      try {
+        const boundariesData = await vtdBoundariesService.getVtdBoundariesForCounties(
+          countyFipsCodes,
+          true // simplified geometry
+        );
+
+        // Check if aborted before setting state
+        if (signal.aborted) {
+          console.log('[VTD Boundaries] Load aborted before setState');
+          return;
+        }
+
+        if (boundariesData && boundariesData.features.length > 0) {
+          lastVtdFipsRef.current = fipsKey;
+          setVtdBoundariesData(boundariesData);
+          console.log(`[VTD Boundaries] Loaded ${boundariesData.features.length} VTD boundaries`);
+        } else {
+          console.warn('[VTD Boundaries] No VTD features returned');
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        console.error('[VTD Boundaries] Error loading:', error);
+      } finally {
+        if (!signal.aborted) {
+          setLoadingVtdBoundaries(false);
+        }
       }
-    } catch (error) {
-      console.error('[VTD Boundaries] Error loading:', error);
-    } finally {
+    };
+
+    loadVtdBoundaries();
+
+    return () => {
+      abortController.abort();
       setLoadingVtdBoundaries(false);
-    }
+    };
   }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, setVtdBoundariesData, setLoadingVtdBoundaries]);
-
-  // Effect: Load state boundaries when toggled on
-  useEffect(() => {
-    if (showStateBoundaries) {
-      loadAllStateBoundaries();
-    } else {
-      setStateBoundariesData(null);
-      lastStateLoadRef.current = false; // Reset so it loads next time
-    }
-  }, [showStateBoundaries, loadAllStateBoundaries, setStateBoundariesData]);
-
-  // Effect: Load ZIP boundaries when toggled on or when search results change
-  useEffect(() => {
-    if (showZipBoundaries) {
-      loadZipBoundariesForResults();
-    } else {
-      setZipBoundariesData(null);
-    }
-  }, [showZipBoundaries, searchPerformed, searchMode, zipResults, geocodeResults, addressResults, setZipBoundariesData]);
-
-  // Effect: Load city boundaries when toggled on or when city results change
-  useEffect(() => {
-    if (showCityBoundaries) {
-      loadCityBoundariesForResults();
-    } else {
-      setCityBoundariesData(null);
-      lastCityKeysRef.current = ''; // Reset so it loads next time
-    }
-  }, [showCityBoundaries, cityResults, setCityBoundariesData]);
-
-  // Effect: Load VTD boundaries when toggled on or when results change
-  useEffect(() => {
-    if (showVtdBoundaries) {
-      loadVtdBoundariesForResults();
-    } else {
-      setVtdBoundariesData(null);
-      lastVtdStatesRef.current = ''; // Reset so it loads next time
-    }
-  }, [showVtdBoundaries, searchPerformed, zipResults, cityResults, geocodeResults, addressResults, setVtdBoundariesData]);
 
   // This component doesn't render anything
   return null;
