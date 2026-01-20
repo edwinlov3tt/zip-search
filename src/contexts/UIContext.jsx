@@ -14,7 +14,7 @@ export const useUI = () => {
 export const UIProvider = ({ children }) => {
   // Drawer state
   const [drawerState, setDrawerState] = useState('half'); // 'full', 'half', 'collapsed'
-  const [drawerHeight, setDrawerHeight] = useState(50); // For custom resize in half mode
+  const [drawerHeight, setDrawerHeight] = useState(25); // For custom resize in half mode (default 25%)
   const [isResizing, setIsResizing] = useState(false);
   const [startY, setStartY] = useState(null);
   const [startHeight, setStartHeight] = useState(null);
@@ -38,7 +38,7 @@ export const UIProvider = ({ children }) => {
       // Determine final drawer state based on height
       if (drawerHeight < 10) {
         setDrawerState('collapsed');
-        setDrawerHeight(50); // Store default for next half state
+        setDrawerHeight(25); // Store default for next half state
       } else if (drawerHeight > 85) {
         setDrawerState('full');
       } else {

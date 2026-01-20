@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import { useUI } from '../../contexts/UIContext';
 
-const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportChange }) => {
+const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportChange, cursorTool, isRadialSearchMode }) => {
   const map = useMap();
   const [isModifierKeyPressed, setIsModifierKeyPressed] = useState(false);
   const [initialViewSet, setInitialViewSet] = useState(false);
@@ -43,10 +43,13 @@ const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportCh
 
   useEffect(() => {
     if (onMapClick) {
-      // Wrap the click handler to check for modifier key
+      // Wrap the click handler to check for modifier key and cursor tool
       const handleMapClick = (e) => {
-        // Don't trigger radius placement if Command/Windows key is held
-        if (!isModifierKeyPressed) {
+        // Only trigger radius placement if:
+        // 1. Radial Point tool is selected (cursorTool === 'radial')
+        // 2. We're in a search mode that supports radius placement
+        // 3. Command/Windows key is NOT held
+        if (cursorTool === 'radial' && isRadialSearchMode && !isModifierKeyPressed) {
           onMapClick(e);
         }
       };
@@ -56,7 +59,7 @@ const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportCh
         map.off('click', handleMapClick);
       };
     }
-  }, [map, onMapClick, isModifierKeyPressed]);
+  }, [map, onMapClick, isModifierKeyPressed, cursorTool, isRadialSearchMode]);
 
   // Track Command/Windows key press
   useEffect(() => {

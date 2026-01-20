@@ -59,6 +59,9 @@ export const MapProvider = ({ children }) => {
   // Hatching pattern toggle for boundaries
   const [showHatching, setShowHatching] = useState(false);
 
+  // Cursor tool state: 'drag' (default) or 'radial'
+  const [cursorTool, setCursorTool] = useState('drag');
+
   // Refs
   const mapRef = useRef(null);
   const markersRef = useRef({});
@@ -350,6 +353,10 @@ export const MapProvider = ({ children }) => {
     // Hatching pattern toggle
     showHatching,
     setShowHatching,
+
+    // Cursor tool
+    cursorTool,
+    setCursorTool,
 
     // Refs
     mapRef,

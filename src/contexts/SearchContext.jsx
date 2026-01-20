@@ -79,7 +79,7 @@ export const SearchProvider = ({ children }) => {
     clearResults
   } = useResults();
 
-  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType, mapType, handleResultMapInteraction } = useMap();
+  const { setMapCenter, setMapZoom, mapRef, featureGroupRef, setDrawnShapes, setMapType, mapType, handleResultMapInteraction, setCursorTool } = useMap();
 
   const { setIsSearchPanelCollapsed, setActiveTab, setDrawerState } = useUI();
 
@@ -665,6 +665,8 @@ export const SearchProvider = ({ children }) => {
         setApiError(error.message || 'Address search failed');
       } finally {
         setIsLoading(false);
+        // Auto-switch back to Drag cursor after placing a radial point
+        setCursorTool('drag');
       }
       return;
     }
@@ -782,6 +784,8 @@ export const SearchProvider = ({ children }) => {
         clearResults();
       } finally {
         setIsLoading(false);
+        // Auto-switch back to Drag cursor after placing a radial point
+        setCursorTool('drag');
       }
     }
   }, [
@@ -810,7 +814,8 @@ export const SearchProvider = ({ children }) => {
     clearResults,
     setLastOverpassCall,
     mapRef,
-    setActiveTab
+    setActiveTab,
+    setCursorTool
   ]);
 
 
@@ -2545,103 +2550,13 @@ export const SearchProvider = ({ children }) => {
       } finally {
         setIsLoading(false);
       }
-    } else {
-      // Default: ZIP code radius search
+    } else if (searchMode === 'radius') {
+      // Radius search mode: Just set up the location, don't trigger search
+      // User will adjust radius and click "Search" button to execute
       setRadiusCenter([finalLocation.lat, finalLocation.lng]);
-      setIsLoading(true);
-      setSearchPerformed(true);
       setApiError(null);
-      setIsSearchMode(false);
-
-      try {
-        const searchParams = {
-          lat: finalLocation.lat,
-          lng: finalLocation.lng,
-          radius: radius,
-          limit: 500,
-          offset: 0
-        };
-
-        const searchResult = await ZipCodeService.search(searchParams);
-        const normalizedResults = normalizeZipResults(searchResult?.results);
-
-        // Calculate sequence number and create search entry (matching map click pattern)
-        const signature = buildRadiusSignature(finalLocation.lat, finalLocation.lng, radius);
-        const filteredSearches = radiusSearches.filter(existing => existing.signature !== signature);
-        const sequence = getNextSequenceNumber(filteredSearches);
-
-        const displayName = finalLocation.displayName || finalLocation.display_name;
-        const newEntryId = generateRadiusSearchId();
-        const baseEntry = {
-          id: newEntryId,
-          label: displayName || `${finalLocation.lat.toFixed(3)}, ${finalLocation.lng.toFixed(3)} (${radius}m)`,
-          radius: radius,
-          center: [finalLocation.lat, finalLocation.lng],
-          query: displayName || null,
-          summary: {
-            zip: normalizedResults[0]?.zipCode || null,
-            city: normalizedResults[0]?.city || null,
-            state: normalizedResults[0]?.state || null
-          },
-          settings: createRadiusSettings({ overlayColor: SEARCH_COLOR_PALETTE[sequence % SEARCH_COLOR_PALETTE.length] }),
-          searchParams: searchParams,
-          selectedLocation: finalLocation,
-          signature,
-          timestamp: Date.now(),
-          resultsCount: normalizedResults.length,
-          sequence
-        };
-
-        const nextRadiusSearches = [baseEntry, ...filteredSearches].slice(0, MAX_RADIUS_HISTORY);
-
-        setRadiusSearches(nextRadiusSearches);
-        setExcludedSearchIds(prev => prev.filter(entryId => nextRadiusSearches.some(item => item.id === entryId)));
-
-        const entry = nextRadiusSearches.find(item => item.id === newEntryId) || baseEntry;
-
-        // Tag results with searchIds and searchSequences (CRITICAL FIX)
-        const resultsWithMeta = normalizedResults.map(result => ({
-          ...result,
-          searchIds: [entry.id],
-          searchSequences: [entry.sequence]
-        }));
-
-        // Store results in searchResultsById tracking system
-        const overrideMap = (() => {
-          const next = { ...searchResultsById };
-          filteredSearches.forEach(existing => {
-            if (existing.signature === signature) {
-              delete next[existing.id];
-            }
-          });
-          next[entry.id] = resultsWithMeta;
-          const allowedIds = new Set(nextRadiusSearches.map(item => item.id));
-          Object.keys(next).forEach(key => {
-            if (!allowedIds.has(key)) {
-              delete next[key];
-            }
-          });
-          return next;
-        })();
-
-        setSearchResultsById(overrideMap);
-        setActiveRadiusSearchId(entry.id);
-        setRadiusDisplaySettings(createRadiusSettings(entry.settings));
-
-        // Use rebuildDisplayedResults instead of direct setZipResults
-        rebuildDisplayedResults(overrideMap, entry.id, nextRadiusSearches);
-
-        setTotalResults(typeof searchResult?.total === 'number' ? searchResult.total : normalizedResults.length);
-        setHasMoreResults(Boolean(searchResult?.hasMore));
-        setCurrentPage(0);
-
-      } catch (error) {
-        console.error('Autocomplete search failed:', error);
-        setApiError(error.message);
-        clearResults();
-      } finally {
-        setIsLoading(false);
-      }
+      // Don't trigger search - user will click "Search" button
+      return;
     }
   }, [
     searchMode,

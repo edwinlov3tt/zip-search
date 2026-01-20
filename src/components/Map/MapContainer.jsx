@@ -52,7 +52,8 @@ const MapContainer = ({
     showMarkers,
     showHatching,
     neighboringZips,
-    setNeighboringZips
+    setNeighboringZips,
+    cursorTool
   } = useMap();
 
   const {
@@ -73,7 +74,9 @@ const MapContainer = ({
   const showRadiusOverlay = radiusDisplaySettings?.showRadius !== false;
 
   // Determine if we should show crosshair cursor
-  const shouldShowCrosshair = searchMode === 'radius' || (searchMode === 'address' && addressSubMode === 'radius');
+  // Only show crosshair when in Radial Point tool mode AND in a mode that supports click-to-place
+  const isRadialSearchMode = searchMode === 'radius' || (searchMode === 'address' && addressSubMode === 'radius');
+  const shouldShowCrosshair = cursorTool === 'radial' && isRadialSearchMode;
 
   // Determine if we should show drawing controls
   const shouldShowDrawingControls = searchMode === 'polygon' || (searchMode === 'address' && addressSubMode === 'polygon');
@@ -112,6 +115,8 @@ const MapContainer = ({
         onMapClick={handleMapClick}
         crosshairCursor={shouldShowCrosshair}
         onViewportChange={handleViewportChange}
+        cursorTool={cursorTool}
+        isRadialSearchMode={isRadialSearchMode}
       />
 
       {/* Drawing Controls - For Polygon Search and Address Polygon Mode */}
