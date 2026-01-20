@@ -2557,6 +2557,16 @@ export const SearchProvider = ({ children }) => {
       setApiError(null);
       // Don't trigger search - user will click "Search" button
       return;
+    } else if (searchMode === 'polygon') {
+      // Polygon mode: Pan/zoom to the selected location for drawing
+      const zoomLevel = finalLocation.type === 'city' ? 12 :
+                        finalLocation.type === 'state' ? 7 : 10;
+      if (mapRef.current) {
+        mapRef.current.setView([finalLocation.lat, finalLocation.lng], zoomLevel, { animate: true });
+      }
+      setSearchTerm(finalLocation.displayName || finalLocation.display_name || '');
+      setApiError(null);
+      return;
     }
   }, [
     searchMode,
@@ -2573,7 +2583,9 @@ export const SearchProvider = ({ children }) => {
     setDrawerState,
     normalizeZipResults,
     updateAggregatedResults,
-    createRadiusSettings
+    createRadiusSettings,
+    mapRef,
+    setSearchTerm
   ]);
 
   // Process data in batches for CSV upload
