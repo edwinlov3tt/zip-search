@@ -6,7 +6,7 @@ import { googlePlacesService } from '../services/googlePlacesService';
 import { detectColumnTypes } from '../utils/csvHelpers';
 import { milesToMeters } from '../utils/polygonHelpers';
 import { useResults } from './ResultsContext';
-import { useMap } from './MapContext';
+import { useMap, CURSOR_TOOLS } from './MapContext';
 import { useUI } from './UIContext';
 
 const SearchContext = createContext();
@@ -666,7 +666,7 @@ export const SearchProvider = ({ children }) => {
       } finally {
         setIsLoading(false);
         // Auto-switch back to Drag cursor after placing a radial point
-        setCursorTool('drag');
+        setCursorTool(CURSOR_TOOLS.DRAG);
       }
       return;
     }
@@ -785,7 +785,7 @@ export const SearchProvider = ({ children }) => {
       } finally {
         setIsLoading(false);
         // Auto-switch back to Drag cursor after placing a radial point
-        setCursorTool('drag');
+        setCursorTool(CURSOR_TOOLS.DRAG);
       }
     }
   }, [

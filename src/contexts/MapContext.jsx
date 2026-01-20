@@ -2,6 +2,12 @@ import React, { createContext, useContext, useState, useRef, useCallback, useEff
 import zipBoundariesService from '../services/zipBoundariesService';
 import stateBoundariesService from '../services/stateBoundariesService';
 
+// Cursor tool constants
+export const CURSOR_TOOLS = {
+  DRAG: 'drag',
+  RADIAL: 'radial'
+};
+
 const MapContext = createContext();
 
 export const useMap = () => {
@@ -59,8 +65,8 @@ export const MapProvider = ({ children }) => {
   // Hatching pattern toggle for boundaries
   const [showHatching, setShowHatching] = useState(false);
 
-  // Cursor tool state: 'drag' (default) or 'radial'
-  const [cursorTool, setCursorTool] = useState('drag');
+  // Cursor tool state
+  const [cursorTool, setCursorTool] = useState(CURSOR_TOOLS.DRAG);
 
   // Refs
   const mapRef = useRef(null);

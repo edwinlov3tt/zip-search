@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import { useUI } from '../../contexts/UIContext';
+import { CURSOR_TOOLS } from '../../contexts/MapContext';
 
 const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportChange, cursorTool, isRadialSearchMode }) => {
   const map = useMap();
@@ -46,10 +47,10 @@ const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportCh
       // Wrap the click handler to check for modifier key and cursor tool
       const handleMapClick = (e) => {
         // Only trigger radius placement if:
-        // 1. Radial Point tool is selected (cursorTool === 'radial')
+        // 1. Radial Point tool is selected
         // 2. We're in a search mode that supports radius placement
         // 3. Command/Windows key is NOT held
-        if (cursorTool === 'radial' && isRadialSearchMode && !isModifierKeyPressed) {
+        if (cursorTool === CURSOR_TOOLS.RADIAL && isRadialSearchMode && !isModifierKeyPressed) {
           onMapClick(e);
         }
       };

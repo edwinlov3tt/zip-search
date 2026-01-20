@@ -1,6 +1,6 @@
 import React from 'react';
 import { Map as MapIcon, Globe, Layers, Move, CircleDot } from 'lucide-react';
-import { useMap } from '../../contexts/MapContext';
+import { useMap, CURSOR_TOOLS } from '../../contexts/MapContext';
 import { useUI } from '../../contexts/UIContext';
 
 const MapLayerSelector = () => {
@@ -22,8 +22,8 @@ const MapLayerSelector = () => {
   ];
 
   const cursorOptions = [
-    { type: 'drag', label: 'Drag', icon: Move },
-    { type: 'radial', label: 'Radial Point', icon: CircleDot }
+    { type: CURSOR_TOOLS.DRAG, label: 'Drag', icon: Move },
+    { type: CURSOR_TOOLS.RADIAL, label: 'Radial Point', icon: CircleDot }
   ];
 
   return (

@@ -4,7 +4,7 @@ import MapController from './MapController';
 import DrawingControls from './DrawingControls';
 import MapMarkers from './MapMarkers';
 import BoundaryLayers from './BoundaryLayers';
-import { useMap } from '../../contexts/MapContext';
+import { useMap, CURSOR_TOOLS } from '../../contexts/MapContext';
 import { useResults } from '../../contexts/ResultsContext';
 import { useSearch } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
@@ -76,7 +76,7 @@ const MapContainer = ({
   // Determine if we should show crosshair cursor
   // Only show crosshair when in Radial Point tool mode AND in a mode that supports click-to-place
   const isRadialSearchMode = searchMode === 'radius' || (searchMode === 'address' && addressSubMode === 'radius');
-  const shouldShowCrosshair = cursorTool === 'radial' && isRadialSearchMode;
+  const shouldShowCrosshair = cursorTool === CURSOR_TOOLS.RADIAL && isRadialSearchMode;
 
   // Determine if we should show drawing controls
   const shouldShowDrawingControls = searchMode === 'polygon' || (searchMode === 'address' && addressSubMode === 'polygon');
