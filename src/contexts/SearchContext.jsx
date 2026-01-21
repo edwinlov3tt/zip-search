@@ -177,7 +177,7 @@ export const SearchProvider = ({ children }) => {
   const [pendingMode, setPendingMode] = useState(null);
 
   // Map type restoration for Address Search mode
-  const [previousMapType, setPreviousMapType] = useState(null);
+  // Note: previousMapType state removed - no longer auto-switching map type for address mode
 
   // CSV mapping
   const [showHeaderMappingModal, setShowHeaderMappingModal] = useState(false);
@@ -1568,18 +1568,6 @@ export const SearchProvider = ({ children }) => {
       }
     }
 
-    // Auto-switch map type for Address Search mode (satellite view shows buildings better)
-    if (newMode === 'address' && searchMode !== 'address') {
-      // Switching TO address mode - save current map type and switch to satellite
-      // Save current mapType before switching (avoid nested setState)
-      setPreviousMapType(mapType);
-      setMapType('satellite');
-    } else if (searchMode === 'address' && newMode !== 'address' && previousMapType) {
-      // Switching FROM address mode - restore previous map type
-      setMapType(previousMapType);
-      setPreviousMapType(null);
-    }
-
     // Normal mode switch
     setSearchMode(newMode);
     // Reset only mode-specific UI state without clearing results
@@ -1590,7 +1578,7 @@ export const SearchProvider = ({ children }) => {
     setIsSearchMode(newMode === 'radius' || newMode === 'polygon'); // Both radius and polygon use search mode UI
     // Expand the search panel downward to show the reset button
     setIsSearchPanelCollapsed(false);
-  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed, setMapType, previousMapType]);
+  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed]);
 
   useEffect(() => {
     // Skip if no results or no searches
