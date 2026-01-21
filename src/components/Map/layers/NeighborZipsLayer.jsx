@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { GeoJSON } from 'react-leaflet';
 
 /**
@@ -15,11 +15,18 @@ const NeighborZipsLayer = ({
   setToastType,
   ZipCodeService
 }) => {
+  // Loading state to prevent double-clicks on Add button
+  const [isAddingZip, setIsAddingZip] = useState(false);
+
   if (!neighboringZips || !neighboringZips.features || neighboringZips.features.length === 0) {
     return null;
   }
 
   const handleAddNeighborZip = async (zipCode) => {
+    // Prevent double-clicks or rapid invocations
+    if (isAddingZip) return;
+    setIsAddingZip(true);
+
     try {
       // Get ZIP details from API
       const response = await ZipCodeService.search({
@@ -79,6 +86,8 @@ const NeighborZipsLayer = ({
       setToastMessage(`Error adding ZIP ${zipCode}`);
       setToastType('error');
       setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsAddingZip(false);
     }
   };
 

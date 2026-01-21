@@ -20,33 +20,50 @@ const ZipBoundaryLayer = ({
   const map = useMap();
   const geoJsonRef = useRef(null);
   const layersToPatternRef = useRef(new Set());
+  const patternRafRef = useRef(null); // For debouncing pattern application
 
   // Loading state to prevent double-clicks on Add ZIP button
   const [isAddingZip, setIsAddingZip] = useState(false);
 
-  // Function to apply or remove diagonal pattern from all tracked layers
+  // Debounced function to apply or remove diagonal pattern from all tracked layers
+  // Uses requestAnimationFrame for smooth, batched updates
   const applyPatternsToLayers = useCallback(() => {
-    layersToPatternRef.current.forEach(layer => {
-      if (layer._path) {
-        if (showHatching) {
-          layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-        } else {
-          // Remove hatching - set fill to the solid color from the style
-          // Use the fillColor from layer options or default to red
-          const fillColor = layer.options?.fillColor || '#dc2626';
-          layer._path.setAttribute('fill', fillColor);
+    // Cancel any pending animation frame to prevent multiple applications
+    if (patternRafRef.current) {
+      cancelAnimationFrame(patternRafRef.current);
+    }
+
+    patternRafRef.current = requestAnimationFrame(() => {
+      layersToPatternRef.current.forEach(layer => {
+        if (layer._path) {
+          const currentFill = layer._path.getAttribute('fill');
+          const targetFill = showHatching ? 'url(#diagonal-lines)' : (layer.options?.fillColor || '#dc2626');
+
+          // Only update if different to avoid unnecessary repaints
+          if (currentFill !== targetFill) {
+            layer._path.setAttribute('fill', targetFill);
+          }
         }
-      }
+      });
     });
   }, [showHatching]);
+
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (patternRafRef.current) {
+        cancelAnimationFrame(patternRafRef.current);
+      }
+    };
+  }, []);
 
   // Apply patterns on map events (zoom, move can recreate SVG paths)
   useEffect(() => {
     if (!map) return;
 
     const handleMapEvent = () => {
-      // Small delay to let Leaflet finish rendering
-      setTimeout(applyPatternsToLayers, 50);
+      // Use requestAnimationFrame for smoother updates after map renders
+      applyPatternsToLayers();
     };
 
     map.on('zoomend', handleMapEvent);
@@ -58,12 +75,10 @@ const ZipBoundaryLayer = ({
     };
   }, [map, applyPatternsToLayers]);
 
-  // Reapply patterns when data or hatching toggle changes
+  // Reapply patterns when hatching toggle changes (data changes handled separately)
   useEffect(() => {
-    // Small delay to let GeoJSON render
-    const timer = setTimeout(applyPatternsToLayers, 100);
-    return () => clearTimeout(timer);
-  }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, showHatching, applyPatternsToLayers]);
+    applyPatternsToLayers();
+  }, [showHatching, applyPatternsToLayers]);
 
   // Effect to update styles when focusedZipCode changes (without full remount)
   // This allows smooth focus transitions without rebuilding all GeoJSON layers
@@ -228,7 +243,7 @@ const ZipBoundaryLayer = ({
   return (
     <GeoJSON
       ref={geoJsonRef}
-      key={`zip-boundaries-${zipBoundariesData.features.length}-${showHatching}`}
+      key={`zip-boundaries-${zipBoundariesData.features.length}`}
       data={zipBoundariesData}
       style={(feature) => {
         const zipCode = feature.properties?.zipcode;
@@ -295,30 +310,15 @@ const ZipBoundaryLayer = ({
         if (isInResults && !isExcluded) {
           layersToPatternRef.current.add(layer);
 
-          // Apply correct fill on 'add' event based on hatching toggle
+          // Apply correct fill on 'add' event using requestAnimationFrame for smooth rendering
           layer.on('add', () => {
-            setTimeout(() => {
+            requestAnimationFrame(() => {
               if (layer._path) {
-                if (showHatching) {
-                  layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-                } else {
-                  // Ensure solid fill color when hatching is off
-                  const fillColor = layer.options?.fillColor || '#dc2626';
-                  layer._path.setAttribute('fill', fillColor);
-                }
+                const targetFill = showHatching ? 'url(#diagonal-lines)' : (layer.options?.fillColor || '#dc2626');
+                layer._path.setAttribute('fill', targetFill);
               }
-            }, 10);
+            });
           });
-
-          // Also apply immediately if path exists
-          if (layer._path) {
-            if (showHatching) {
-              layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-            } else {
-              const fillColor = layer.options?.fillColor || '#dc2626';
-              layer._path.setAttribute('fill', fillColor);
-            }
-          }
         }
 
         // Clean up tracking when layer is removed

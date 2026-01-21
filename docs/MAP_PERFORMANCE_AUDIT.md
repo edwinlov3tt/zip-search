@@ -20,6 +20,8 @@ This document tracks performance and stability issues identified in the map inte
 - [x] **MapMarkers inline eventHandlers** - Cache event handler objects and use stable useCallback handlers
 - [x] **GeoJSON key remount on focus** - Remove focusedZipCode from key, use dynamic style updates instead
 - [x] **ZipBoundaryLayer loading guard** - Add isAddingZip state to prevent double-clicks on Add ZIP button
+- [x] **NeighborZipsLayer loading guard** - Add isAddingZip state to prevent double-clicks on Add button
+- [x] **Diagonal pattern flashing** - Use requestAnimationFrame instead of setTimeout, remove showHatching from GeoJSON key
 
 ---
 
@@ -90,15 +92,6 @@ style={{
 
 ---
 
-#### 7. NeighborZipsLayer.handleAddNeighborZip - No loading guard
-**File**: `src/components/Map/layers/NeighborZipsLayer.jsx:22`
-
-**Problem**: Same double-click vulnerability as ZipBoundaryLayer.
-
-**Fix**: Add loading state guard.
-
----
-
 ## Async Sources Inventory
 
 | Location | Async Source | Has Cleanup? | Has Race Protection? |
@@ -108,8 +101,8 @@ style={{
 | `BoundaryManager.loadCityBoundariesForResults` | `cityBoundariesService` | ✅ (fixed) | ✅ (fixed) |
 | `BoundaryManager.loadVtdBoundariesForResults` | `vtdBoundariesService` | ✅ (fixed) | ✅ (fixed) |
 | `MapContext.handleResultMapInteraction` | `zipBoundariesService` | ❌ | ✅ (partial) |
-| `ZipBoundaryLayer.handleAddZip` | `ZipCodeService` | ❌ | ❌ |
-| `NeighborZipsLayer.handleAddNeighborZip` | `ZipCodeService` | ❌ | ❌ |
+| `ZipBoundaryLayer.handleAddZip` | `ZipCodeService` | ❌ | ✅ (fixed) |
+| `NeighborZipsLayer.handleAddNeighborZip` | `ZipCodeService` | ❌ | ✅ (fixed) |
 | `SearchContext.handleMapClickSearch` | `ZipCodeService`, `Worker` | ❌ | ❌ |
 | `SearchContext.handleAutocompleteSelect` | `googlePlacesService`, `Worker` | ❌ | ❌ |
 
