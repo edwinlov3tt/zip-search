@@ -1687,6 +1687,7 @@ export const SearchProvider = ({ children }) => {
           lat: searchLat,
           lng: searchLng,
           radius: currentRadius,
+          center: searchLat && searchLng ? [searchLat, searchLng] : null, // For radius circle rendering
           coordinates: searchCoordinates,
           label: searchLabel
         };
@@ -3425,11 +3426,37 @@ export const SearchProvider = ({ children }) => {
     try {
       // Convert shape to polygon coordinates
       const coords = [];
-      if (shape.layer && shape.layer.getLatLngs) {
+      if (shape.type === 'polygon' && shape.layer && shape.layer.getLatLngs) {
         const latLngs = shape.layer.getLatLngs()[0];
         latLngs.forEach(latLng => {
           coords.push([latLng.lat, latLng.lng]);
         });
+      } else if (shape.type === 'rectangle' && shape.layer && shape.layer.getBounds) {
+        const bounds = shape.layer.getBounds();
+        coords.push(
+          [bounds.getNorth(), bounds.getWest()],
+          [bounds.getNorth(), bounds.getEast()],
+          [bounds.getSouth(), bounds.getEast()],
+          [bounds.getSouth(), bounds.getWest()]
+        );
+      } else if (shape.type === 'circle' && shape.layer) {
+        // Convert circle to polygon approximation (32 points)
+        const center = shape.layer.getLatLng();
+        const radius = shape.layer.getRadius(); // in meters
+        const points = 32;
+        for (let i = 0; i < points; i++) {
+          const angle = (i / points) * 2 * Math.PI;
+          const lat = center.lat + (radius / 111320) * Math.cos(angle);
+          const lng = center.lng + (radius / (111320 * Math.cos(center.lat * Math.PI / 180))) * Math.sin(angle);
+          coords.push([lat, lng]);
+        }
+      }
+
+      // Check if we got any coordinates
+      if (coords.length === 0) {
+        setApiError('Could not extract coordinates from the drawn shape');
+        setIsLoading(false);
+        return;
       }
 
       // Validate polygon size (max 100 square miles - worker API handles chunking)
