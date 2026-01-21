@@ -115,6 +115,15 @@ export const MapProvider = ({ children }) => {
         // Don't auto-enable showZipBoundaries - let user control that toggle explicitly
         const targetZipCode = result.zipCode;
 
+        // Toggle behavior: if clicking the same ZIP that's already focused, deselect it
+        if (focusedZipCodeRef.current === targetZipCode) {
+          setFocusedZipCode(null);
+          setFocusedZipBoundary(null);
+          setShowOnlyFocusedBoundary(false);
+          focusedZipCodeRef.current = null;
+          return; // Don't re-center map, just deselect
+        }
+
         // IMPORTANT: Clear the old boundary FIRST to prevent visual glitches
         // This ensures the old boundary disappears immediately before loading new one
         setFocusedZipBoundary(null);

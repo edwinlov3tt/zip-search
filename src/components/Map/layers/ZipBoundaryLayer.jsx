@@ -68,7 +68,7 @@ const ZipBoundaryLayer = ({
   // Effect to update styles when focusedZipCode changes (without full remount)
   // This allows smooth focus transitions without rebuilding all GeoJSON layers
   useEffect(() => {
-    if (!geoJsonRef.current || showOnlyFocusedBoundary) return;
+    if (!geoJsonRef.current) return;
 
     // Re-apply styles to all layers based on current focus
     geoJsonRef.current.eachLayer((layer) => {
@@ -131,7 +131,7 @@ const ZipBoundaryLayer = ({
         });
       }
     });
-  }, [focusedZipCode, removedItems, getRemovalKey, showOnlyFocusedBoundary, showHatching]);
+  }, [focusedZipCode, removedItems, getRemovalKey, showHatching]);
 
   const handleAddZip = async (zipCode, isExcluded) => {
     // Prevent double-clicks or rapid invocations
@@ -228,18 +228,8 @@ const ZipBoundaryLayer = ({
   return (
     <GeoJSON
       ref={geoJsonRef}
-      key={`zip-boundaries-${zipBoundariesData.features.length}-${showOnlyFocusedBoundary ? focusedZipCode : 'all'}-${showOnlyFocusedBoundary}-${showHatching}`}
-      data={(() => {
-        if (showOnlyFocusedBoundary && focusedZipCode) {
-          const only = zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode);
-          if (only.length > 0) {
-            return { ...zipBoundariesData, features: only };
-          }
-          // Fallback: keep previous features to avoid empty flash
-          return zipBoundariesData;
-        }
-        return zipBoundariesData;
-      })()}
+      key={`zip-boundaries-${zipBoundariesData.features.length}-${showHatching}`}
+      data={zipBoundariesData}
       style={(feature) => {
         const zipCode = feature.properties?.zipcode;
         const isInResults = feature.properties?.inSearchResults;
