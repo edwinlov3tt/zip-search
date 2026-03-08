@@ -3,7 +3,7 @@ import GeoApplication from './GeoApplication';
 import GeoApplicationNew from './GeoApplicationNew';
 import './index.css';
 
-function App() {
+const App = React.memo(() => {
   // Toggle this to test the refactored version
   const useRefactored = true;
 
@@ -12,6 +12,8 @@ function App() {
       {useRefactored ? <GeoApplicationNew /> : <GeoApplication />}
     </div>
   );
-}
+});
+
+App.displayName = 'App';
 
 export default App;

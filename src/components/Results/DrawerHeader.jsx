@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ChevronUp, ChevronDown, Maximize2, Minimize2, Search, Copy, FileDown, Download, Check, Camera, Loader2, Share2 } from 'lucide-react';
 import DrawerTabs from './DrawerTabs';
 import BoundarySettings from './BoundarySettings';
@@ -7,7 +7,7 @@ import { useMap } from '../../contexts/MapContext';
 import { useShare } from '../../contexts/ShareContext';
 import { captureAndDownload } from '../../services/screenshotService';
 
-const DrawerHeader = ({
+const DrawerHeader = React.memo(({
   handleMouseDown,
   cycleDrawerState,
   copyToClipboard,
@@ -281,6 +281,8 @@ const DrawerHeader = ({
       </div>
     </div>
   );
-};
+});
+
+DrawerHeader.displayName = 'DrawerHeader';
 
 export default DrawerHeader;

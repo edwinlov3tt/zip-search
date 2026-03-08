@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { GeoJSON } from 'react-leaflet';
 import CountyBoundaryLayer from './layers/CountyBoundaryLayer';
 import ZipBoundaryLayer from './layers/ZipBoundaryLayer';
@@ -8,7 +8,7 @@ import VtdBoundaryLayer from './layers/VtdBoundaryLayer';
 import NeighborZipsLayer from './layers/NeighborZipsLayer';
 import DiagonalPattern from './patterns/DiagonalPattern';
 
-const BoundaryLayers = ({
+const BoundaryLayers = React.memo(({
   showCountyBorders,
   countyBoundaries,
   selectedCountyBoundary,
@@ -41,6 +41,15 @@ const BoundaryLayers = ({
   neighboringZips,
   setNeighboringZips
 }) => {
+  // Memoize the focused ZIP style to prevent recreation
+  const focusedZipStyle = useMemo(() => ({
+    color: '#ff0000',
+    weight: 3,
+    opacity: 1,
+    fillOpacity: 0.2,
+    fillColor: '#dc2626'
+  }), []);
+
   return (
     <>
       {/* SVG Pattern Definitions for boundaries */}
@@ -86,13 +95,7 @@ const BoundaryLayers = ({
         <GeoJSON
           key={`focused-zip-${focusedZipCode}`}
           data={focusedZipBoundary}
-          style={() => ({
-            color: '#ff0000',
-            weight: 3,
-            opacity: 1,
-            fillOpacity: 0.2,
-            fillColor: '#dc2626'
-          })}
+          style={focusedZipStyle}
         />
       )}
 
@@ -135,6 +138,8 @@ const BoundaryLayers = ({
       )}
     </>
   );
-};
+});
+
+BoundaryLayers.displayName = 'BoundaryLayers';
 
 export default BoundaryLayers;

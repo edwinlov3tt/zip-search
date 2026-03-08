@@ -182,3 +182,124 @@ curl -X POST "https://feedback.edwinlovett.com/roadmap/api/v1/projects/GeoSearch
 ### When to Post Updates
 ✅ Post for: New features, bug fixes, significant refactors, service integrations, performance improvements
 ❌ Skip for: Minor edits, config changes, internal refactoring with no user impact
+
+---
+
+## RuntimeScope Monitoring
+
+This project has RuntimeScope SDK installed for runtime profiling and debugging.
+
+### SDK Configuration
+RuntimeScope is initialized in `src/main.jsx` with the following features:
+- **Network Requests**: All fetch/XHR calls are intercepted
+- **Console Messages**: All console.log/warn/error captured
+- **Performance Metrics**: Web Vitals (LCP, FCP, CLS, TTFB, INP) tracked
+- **React Renders**: Component render profiling enabled
+- **Connection**: WebSocket to `ws://localhost:9090`
+
+### Available RuntimeScope Commands
+
+| Command | What it does |
+|---------|-------------|
+| `/diagnose` | Full health check - issues, API health, performance |
+| `/trace` | Trace a user flow - clear events, reproduce, analyze |
+| `/renders` | React render audit - find excessive re-renders |
+| `/api` | API health report - endpoints, latency, errors |
+| `/network` | Network analysis - failed/slow requests, patterns |
+
+### Using RuntimeScope
+
+1. **Start your dev server**: `npm run dev`
+2. **Open the app** in your browser
+3. **Check connection**: Ask Claude to run `get_session_info` to verify SDK is connected
+4. **Debug issues**: Use `detect_issues` to find problems automatically
+5. **Trace flows**: Use `clear_events`, reproduce the issue, then `get_event_timeline`
+
+### Common Debugging Workflows
+
+**Performance issues**:
+```
+1. clear_events
+2. Reproduce the slow interaction
+3. detect_issues - identifies bottlenecks
+4. get_render_profile - shows component re-renders
+5. get_performance_metrics - Web Vitals analysis
+```
+
+**API issues**:
+```
+1. get_api_catalog - discover all endpoints
+2. get_api_health - latency and error rates
+3. get_network_requests with filters - drill into specific requests
+```
+
+**State debugging**:
+```
+1. get_state_snapshots - if stores are configured
+2. get_console_messages - filter by level
+3. get_errors_with_source_context - errors with stack traces
+```
+
+---
+
+## Documentation Protocol
+
+This project uses an automated documentation system. Follow these protocols to keep documentation current and accurate.
+
+### Quick Reference
+
+| Command | When to Use | Example |
+|---------|-------------|---------|
+| `/doc` | After every coding session | `/doc` |
+| `/issue` | When you find a bug or edge case | `/issue API timeout on large payloads` |
+| `/decision` | When you make a technical choice | `/decision Using Redis over Memcached` |
+| `/service` | When you add/modify external service | `/service Stripe` |
+| `/audit` | Full project analysis (periodic) | `/audit` |
+| `/doc-status` | Check documentation health | `/doc-status` |
+| `/handoff` | Before sharing with another dev | `/handoff` |
+
+### Documentation Locations
+
+| Document | Purpose | Update Frequency |
+|----------|---------|------------------|
+| `.claude/docs/CHANGELOG.md` | What changed and when | Every session |
+| `.claude/docs/KNOWN_ISSUES.md` | Bugs, edge cases, tech debt | When discovered |
+| `.claude/docs/DECISIONS.md` | Why things were built this way | When deciding |
+| `.claude/docs/ARCHITECTURE.md` | System overview, env vars | When structure changes |
+| `.claude/docs/services/*.md` | External service integrations | When services change |
+| `.claude/docs/components/*.md` | Internal component docs | When components change |
+
+### Workflow Rules
+
+**After Every Coding Session**: Run `/doc` to update CHANGELOG.md with what was done, flag any new issues discovered, and update affected service/component docs.
+
+**When You Encounter a Bug or Edge Case**: Run `/issue [description]` immediately. Don't trust your memory.
+
+**When You Make a Non-Obvious Technical Decision**: Run `/decision [what you decided]` to capture context for future developers.
+
+**When You Add or Modify External Services**: Run `/service [service name]` to document the integration.
+
+**Before Handing Off to Another Developer**: Run `/handoff` to generate a comprehensive onboarding document.
+
+### Issue Severity Guide
+
+| Level | Description | Example |
+|-------|-------------|---------|
+| CRITICAL | System unusable, data loss risk | Auth completely broken |
+| HIGH | Major feature broken, no workaround | Checkout fails silently |
+| MEDIUM | Feature impaired, workaround exists | Export works but slow |
+| LOW | Minor inconvenience | Typo in error message |
+
+### Decision Recording Guide
+
+Record a decision when:
+- Choosing between technologies (e.g., "Why Cloudflare over Vercel")
+- Designing data models or APIs
+- Setting up infrastructure
+- Establishing patterns that will be repeated
+- Making tradeoffs that won't be obvious later
+
+Don't record:
+- Obvious choices (standard patterns)
+- Temporary implementations
+- Personal preferences without project impact

@@ -27,7 +27,7 @@ import { useShare } from './contexts/ShareContext';
  * Main GeoApplication component that composes all features
  * This is a thin wrapper that brings together all the extracted components
  */
-const GeoApplicationContent = () => {
+const GeoApplicationContent = React.memo(() => {
   const {
     searchMode,
     searchTerm,
@@ -526,13 +526,15 @@ const GeoApplicationContent = () => {
       <ShareModal />
     </div>
   );
-};
+});
+
+GeoApplicationContent.displayName = 'GeoApplicationContent';
 
 /**
  * GeoApplication with all context providers
  * This wraps the main component with all necessary providers
  */
-const GeoApplicationNew = () => {
+const GeoApplicationNew = React.memo(() => {
   return (
     <UIProvider>
       <ResultsProvider>
@@ -546,6 +548,8 @@ const GeoApplicationNew = () => {
       </ResultsProvider>
     </UIProvider>
   );
-};
+});
+
+GeoApplicationNew.displayName = 'GeoApplicationNew';
 
 export default GeoApplicationNew;

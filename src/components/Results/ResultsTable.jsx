@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { ArrowUpDown, X } from 'lucide-react';
 import { useUI } from '../../contexts/UIContext';
 import { useResults } from '../../contexts/ResultsContext';
 import { useSearch } from '../../contexts/SearchContext';
 
-const ResultsTable = ({
+const ResultsTable = React.memo(({
   activeTab,
   data,
   handleSort,
@@ -216,6 +216,8 @@ const ResultsTable = ({
       </tbody>
     </table>
   );
-};
+});
+
+ResultsTable.displayName = 'ResultsTable';
 
 export default ResultsTable;

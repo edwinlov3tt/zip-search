@@ -288,6 +288,8 @@ export const MapProvider = ({ children }) => {
     // Note: Loading happens in GeoApplication based on search results
   }, [showVtdBoundaries]);
 
+  // Memoize the context value properly with all dependencies
+  // Note: Setter functions from useState are stable and don't need to be in dependencies
   const value = useMemo(() => ({
     // Map state
     mapType,
@@ -388,7 +390,8 @@ export const MapProvider = ({ children }) => {
     setOnShapeDeletedCallback,
     handleResultMapInteraction
   }), [
-    // State values that trigger re-renders when changed
+    // Only include state values and callbacks that actually change
+    // Setter functions from useState are stable and don't need to be included
     mapType,
     mapCenter,
     mapZoom,
@@ -420,11 +423,14 @@ export const MapProvider = ({ children }) => {
     showMarkers,
     showHatching,
     cursorTool,
-    // Callbacks (included for completeness, though most are stable)
+    // These callbacks use useCallback and should be stable
     handleMapClick,
     handleViewportChange,
     onCreated,
     onDeleted,
+    setMapClickCallback,
+    setOnShapeCreatedCallback,
+    setOnShapeDeletedCallback,
     handleResultMapInteraction
   ]);
 

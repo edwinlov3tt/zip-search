@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer } from 'react-leaflet';
 import MapController from './MapController';
 import DrawingControls from './DrawingControls';
@@ -10,7 +10,7 @@ import { useSearch } from '../../contexts/SearchContext';
 import { useUI } from '../../contexts/UIContext';
 import { ZipCodeService } from '../../services/zipCodeService';
 
-const MapContainer = ({
+const MapContainer = React.memo(({
   searchMode,
   addressSubMode,
   isSearchMode,
@@ -81,8 +81,8 @@ const MapContainer = ({
   // Determine if we should show drawing controls
   const shouldShowDrawingControls = searchMode === 'polygon' || (searchMode === 'address' && addressSubMode === 'polygon');
 
-  // Get tile layer URL based on map type
-  const getTileLayer = () => {
+  // Memoize tile layer URL function to prevent recreating on every render
+  const getTileLayer = useCallback(() => {
     switch (mapType) {
       case 'satellite':
         return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -91,7 +91,12 @@ const MapContainer = ({
       default: // street
         return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
-  };
+  }, [mapType]);
+
+  // Memoize container style to prevent recreation on every render
+  const containerStyle = useMemo(() => ({
+    cursor: shouldShowCrosshair ? 'crosshair' : undefined
+  }), [shouldShowCrosshair]);
 
   return (
     <LeafletMapContainer
@@ -100,9 +105,7 @@ const MapContainer = ({
       className="w-full h-full"
       zoomControl={false}
       ref={mapRef}
-      style={{
-        cursor: shouldShowCrosshair ? 'crosshair' : undefined
-      }}
+      style={containerStyle}
     >
       <TileLayer
         url={getTileLayer()}
@@ -186,6 +189,8 @@ const MapContainer = ({
       />
     </LeafletMapContainer>
   );
-};
+});
+
+MapContainer.displayName = 'MapContainer';
 
 export default MapContainer;
