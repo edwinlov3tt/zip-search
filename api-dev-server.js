@@ -34,7 +34,7 @@ async function executeEdgeFunction(functionPath, req, res) {
     try {
       const stats = await fs.stat(modulePath);
       if (stats.isDirectory()) {
-        finalPath = join(modulePath, 'index.js');
+        finalPath = join(modulePath, 'index.js');11
       } else if (!modulePath.endsWith('.js')) {
         finalPath = `${modulePath}.js`;
       }

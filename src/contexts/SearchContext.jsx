@@ -177,7 +177,7 @@ export const SearchProvider = ({ children }) => {
   const [pendingMode, setPendingMode] = useState(null);
 
   // Map type restoration for Address Search mode
-  const [previousMapType, setPreviousMapType] = useState(null);
+  // Note: previousMapType state removed - no longer auto-switching map type for address mode
 
   // CSV mapping
   const [showHeaderMappingModal, setShowHeaderMappingModal] = useState(false);
@@ -1568,18 +1568,6 @@ export const SearchProvider = ({ children }) => {
       }
     }
 
-    // Auto-switch map type for Address Search mode (satellite view shows buildings better)
-    if (newMode === 'address' && searchMode !== 'address') {
-      // Switching TO address mode - save current map type and switch to satellite
-      // Save current mapType before switching (avoid nested setState)
-      setPreviousMapType(mapType);
-      setMapType('satellite');
-    } else if (searchMode === 'address' && newMode !== 'address' && previousMapType) {
-      // Switching FROM address mode - restore previous map type
-      setMapType(previousMapType);
-      setPreviousMapType(null);
-    }
-
     // Normal mode switch
     setSearchMode(newMode);
     // Reset only mode-specific UI state without clearing results
@@ -1590,7 +1578,7 @@ export const SearchProvider = ({ children }) => {
     setIsSearchMode(newMode === 'radius' || newMode === 'polygon'); // Both radius and polygon use search mode UI
     // Expand the search panel downward to show the reset button
     setIsSearchPanelCollapsed(false);
-  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed, setMapType, previousMapType]);
+  }, [searchMode, addressSearches, geocodeResults, geocodePreparedAddresses, clearAddressResults, clearGeocodeResults, clearResults, setIsSearchPanelCollapsed]);
 
   useEffect(() => {
     // Skip if no results or no searches
@@ -1687,6 +1675,7 @@ export const SearchProvider = ({ children }) => {
           lat: searchLat,
           lng: searchLng,
           radius: currentRadius,
+          center: searchLat && searchLng ? [searchLat, searchLng] : null, // For radius circle rendering
           coordinates: searchCoordinates,
           label: searchLabel
         };
@@ -3425,11 +3414,37 @@ export const SearchProvider = ({ children }) => {
     try {
       // Convert shape to polygon coordinates
       const coords = [];
-      if (shape.layer && shape.layer.getLatLngs) {
+      if (shape.type === 'polygon' && shape.layer && shape.layer.getLatLngs) {
         const latLngs = shape.layer.getLatLngs()[0];
         latLngs.forEach(latLng => {
           coords.push([latLng.lat, latLng.lng]);
         });
+      } else if (shape.type === 'rectangle' && shape.layer && shape.layer.getBounds) {
+        const bounds = shape.layer.getBounds();
+        coords.push(
+          [bounds.getNorth(), bounds.getWest()],
+          [bounds.getNorth(), bounds.getEast()],
+          [bounds.getSouth(), bounds.getEast()],
+          [bounds.getSouth(), bounds.getWest()]
+        );
+      } else if (shape.type === 'circle' && shape.layer) {
+        // Convert circle to polygon approximation (32 points)
+        const center = shape.layer.getLatLng();
+        const radius = shape.layer.getRadius(); // in meters
+        const points = 32;
+        for (let i = 0; i < points; i++) {
+          const angle = (i / points) * 2 * Math.PI;
+          const lat = center.lat + (radius / 111320) * Math.cos(angle);
+          const lng = center.lng + (radius / (111320 * Math.cos(center.lat * Math.PI / 180))) * Math.sin(angle);
+          coords.push([lat, lng]);
+        }
+      }
+
+      // Check if we got any coordinates
+      if (coords.length === 0) {
+        setApiError('Could not extract coordinates from the drawn shape');
+        setIsLoading(false);
+        return;
       }
 
       // Validate polygon size (max 100 square miles - worker API handles chunking)

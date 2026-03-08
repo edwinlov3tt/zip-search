@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ArrowUpDown, X } from 'lucide-react';
 import { useUI } from '../../contexts/UIContext';
 import { useResults } from '../../contexts/ResultsContext';
 
-const GeocodeResultsTable = ({
+const GeocodeResultsTable = React.memo(({
   data,
   handleSort,
   handleResultSelect,
@@ -136,6 +136,8 @@ const GeocodeResultsTable = ({
       </table>
     </div>
   );
-};
+});
+
+GeocodeResultsTable.displayName = 'GeocodeResultsTable';
 
 export default GeocodeResultsTable;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { GeoJSON, useMap } from 'react-leaflet';
 
 const ZipBoundaryLayer = ({
@@ -20,30 +20,50 @@ const ZipBoundaryLayer = ({
   const map = useMap();
   const geoJsonRef = useRef(null);
   const layersToPatternRef = useRef(new Set());
+  const patternRafRef = useRef(null); // For debouncing pattern application
 
-  // Function to apply or remove diagonal pattern from all tracked layers
+  // Loading state to prevent double-clicks on Add ZIP button
+  const [isAddingZip, setIsAddingZip] = useState(false);
+
+  // Debounced function to apply or remove diagonal pattern from all tracked layers
+  // Uses requestAnimationFrame for smooth, batched updates
   const applyPatternsToLayers = useCallback(() => {
-    layersToPatternRef.current.forEach(layer => {
-      if (layer._path) {
-        if (showHatching) {
-          layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-        } else {
-          // Remove hatching - set fill to the solid color from the style
-          // Use the fillColor from layer options or default to red
-          const fillColor = layer.options?.fillColor || '#dc2626';
-          layer._path.setAttribute('fill', fillColor);
+    // Cancel any pending animation frame to prevent multiple applications
+    if (patternRafRef.current) {
+      cancelAnimationFrame(patternRafRef.current);
+    }
+
+    patternRafRef.current = requestAnimationFrame(() => {
+      layersToPatternRef.current.forEach(layer => {
+        if (layer._path) {
+          const currentFill = layer._path.getAttribute('fill');
+          const targetFill = showHatching ? 'url(#diagonal-lines)' : (layer.options?.fillColor || '#dc2626');
+
+          // Only update if different to avoid unnecessary repaints
+          if (currentFill !== targetFill) {
+            layer._path.setAttribute('fill', targetFill);
+          }
         }
-      }
+      });
     });
   }, [showHatching]);
+
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (patternRafRef.current) {
+        cancelAnimationFrame(patternRafRef.current);
+      }
+    };
+  }, []);
 
   // Apply patterns on map events (zoom, move can recreate SVG paths)
   useEffect(() => {
     if (!map) return;
 
     const handleMapEvent = () => {
-      // Small delay to let Leaflet finish rendering
-      setTimeout(applyPatternsToLayers, 50);
+      // Use requestAnimationFrame for smoother updates after map renders
+      applyPatternsToLayers();
     };
 
     map.on('zoomend', handleMapEvent);
@@ -55,14 +75,84 @@ const ZipBoundaryLayer = ({
     };
   }, [map, applyPatternsToLayers]);
 
-  // Reapply patterns when data or hatching toggle changes
+  // Reapply patterns when hatching toggle changes (data changes handled separately)
   useEffect(() => {
-    // Small delay to let GeoJSON render
-    const timer = setTimeout(applyPatternsToLayers, 100);
-    return () => clearTimeout(timer);
-  }, [zipBoundariesData, focusedZipCode, showOnlyFocusedBoundary, showHatching, applyPatternsToLayers]);
+    applyPatternsToLayers();
+  }, [showHatching, applyPatternsToLayers]);
+
+  // Effect to update styles when focusedZipCode changes (without full remount)
+  // This allows smooth focus transitions without rebuilding all GeoJSON layers
+  useEffect(() => {
+    if (!geoJsonRef.current) return;
+
+    // Re-apply styles to all layers based on current focus
+    geoJsonRef.current.eachLayer((layer) => {
+      const feature = layer.feature;
+      if (!feature) return;
+
+      const zipCode = feature.properties?.zipcode;
+      const isInResults = feature.properties?.inSearchResults;
+      const isFocused = zipCode === focusedZipCode;
+      const isExcluded = removedItems.has(getRemovalKey('zip', { zipCode }));
+      const isAdditional = feature.properties?.isAdditional;
+
+      // Apply appropriate style based on state
+      if (isFocused) {
+        layer.setStyle({
+          color: '#ff0000',
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 0.2,
+          fillColor: '#dc2626'
+        });
+      } else if (isExcluded) {
+        layer.setStyle({
+          color: '#ef4444',
+          weight: 2,
+          opacity: 0.7,
+          fillOpacity: 0.08,
+          fillColor: '#ef4444',
+          dashArray: '10, 5, 2, 5'
+        });
+      } else if (isInResults) {
+        layer.setStyle({
+          color: '#dc2626',
+          weight: 1.5,
+          opacity: 0.8,
+          fillOpacity: 0.25,
+          fillColor: '#dc2626',
+          dashArray: null
+        });
+        // Reapply hatching pattern if enabled
+        if (showHatching && layer._path) {
+          layer._path.setAttribute('fill', 'url(#diagonal-lines)');
+        }
+      } else if (isAdditional) {
+        layer.setStyle({
+          color: '#2563eb',
+          weight: 2,
+          opacity: 0.9,
+          fillOpacity: 0.08,
+          fillColor: '#3b82f6',
+          dashArray: '8, 3, 2, 3'
+        });
+      } else {
+        layer.setStyle({
+          color: '#9ca3af',
+          weight: 1,
+          opacity: 0.5,
+          fillOpacity: 0.02,
+          dashArray: null
+        });
+      }
+    });
+  }, [focusedZipCode, removedItems, getRemovalKey, showHatching]);
 
   const handleAddZip = async (zipCode, isExcluded) => {
+    // Prevent double-clicks or rapid invocations
+    if (isAddingZip) return;
+    setIsAddingZip(true);
+
     try {
       if (isExcluded) {
         // Remove from excluded items
@@ -145,24 +235,16 @@ const ZipBoundaryLayer = ({
       setToastMessage(`Error adding ZIP ${zipCode}`);
       setToastType('error');
       setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsAddingZip(false);
     }
   };
 
   return (
     <GeoJSON
       ref={geoJsonRef}
-      key={`zip-boundaries-${zipBoundariesData.features.length}-${focusedZipCode}-${showOnlyFocusedBoundary}-${showHatching}`}
-      data={(() => {
-        if (showOnlyFocusedBoundary && focusedZipCode) {
-          const only = zipBoundariesData.features.filter(f => f.properties?.zipcode === focusedZipCode);
-          if (only.length > 0) {
-            return { ...zipBoundariesData, features: only };
-          }
-          // Fallback: keep previous features to avoid empty flash
-          return zipBoundariesData;
-        }
-        return zipBoundariesData;
-      })()}
+      key={`zip-boundaries-${zipBoundariesData.features.length}`}
+      data={zipBoundariesData}
       style={(feature) => {
         const zipCode = feature.properties?.zipcode;
         const isInResults = feature.properties?.inSearchResults;
@@ -228,30 +310,15 @@ const ZipBoundaryLayer = ({
         if (isInResults && !isExcluded) {
           layersToPatternRef.current.add(layer);
 
-          // Apply correct fill on 'add' event based on hatching toggle
+          // Apply correct fill on 'add' event using requestAnimationFrame for smooth rendering
           layer.on('add', () => {
-            setTimeout(() => {
+            requestAnimationFrame(() => {
               if (layer._path) {
-                if (showHatching) {
-                  layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-                } else {
-                  // Ensure solid fill color when hatching is off
-                  const fillColor = layer.options?.fillColor || '#dc2626';
-                  layer._path.setAttribute('fill', fillColor);
-                }
+                const targetFill = showHatching ? 'url(#diagonal-lines)' : (layer.options?.fillColor || '#dc2626');
+                layer._path.setAttribute('fill', targetFill);
               }
-            }, 10);
+            });
           });
-
-          // Also apply immediately if path exists
-          if (layer._path) {
-            if (showHatching) {
-              layer._path.setAttribute('fill', 'url(#diagonal-lines)');
-            } else {
-              const fillColor = layer.options?.fillColor || '#dc2626';
-              layer._path.setAttribute('fill', fillColor);
-            }
-          }
         }
 
         // Clean up tracking when layer is removed

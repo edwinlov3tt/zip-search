@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import zipBoundariesService from '../services/zipBoundariesService';
 import stateBoundariesService from '../services/stateBoundariesService';
 
@@ -114,6 +114,15 @@ export const MapProvider = ({ children }) => {
         // For ZIP codes, show only the selected boundary
         // Don't auto-enable showZipBoundaries - let user control that toggle explicitly
         const targetZipCode = result.zipCode;
+
+        // Toggle behavior: if clicking the same ZIP that's already focused, deselect it
+        if (focusedZipCodeRef.current === targetZipCode) {
+          setFocusedZipCode(null);
+          setFocusedZipBoundary(null);
+          setShowOnlyFocusedBoundary(false);
+          focusedZipCodeRef.current = null;
+          return; // Don't re-center map, just deselect
+        }
 
         // IMPORTANT: Clear the old boundary FIRST to prevent visual glitches
         // This ensures the old boundary disappears immediately before loading new one
@@ -279,7 +288,9 @@ export const MapProvider = ({ children }) => {
     // Note: Loading happens in GeoApplication based on search results
   }, [showVtdBoundaries]);
 
-  const value = {
+  // Memoize the context value properly with all dependencies
+  // Note: Setter functions from useState are stable and don't need to be in dependencies
+  const value = useMemo(() => ({
     // Map state
     mapType,
     setMapType,
@@ -378,7 +389,50 @@ export const MapProvider = ({ children }) => {
     setOnShapeCreatedCallback,
     setOnShapeDeletedCallback,
     handleResultMapInteraction
-  };
+  }), [
+    // Only include state values and callbacks that actually change
+    // Setter functions from useState are stable and don't need to be included
+    mapType,
+    mapCenter,
+    mapZoom,
+    currentViewport,
+    drawnShapes,
+    isSearchMode,
+    showCountyBorders,
+    countyBoundaries,
+    selectedCountyBoundary,
+    showZipBoundaries,
+    zipBoundariesData,
+    loadingZipBoundaries,
+    focusedZipCode,
+    focusedZipBoundary,
+    showOnlyFocusedBoundary,
+    neighboringZips,
+    loadingNeighbors,
+    showStateBoundaries,
+    stateBoundariesData,
+    loadingStateBoundaries,
+    showCityBoundaries,
+    cityBoundariesData,
+    loadingCityBoundaries,
+    showVtdBoundaries,
+    vtdBoundariesData,
+    loadingVtdBoundaries,
+    focusedVtd,
+    showMapLayers,
+    showMarkers,
+    showHatching,
+    cursorTool,
+    // These callbacks use useCallback and should be stable
+    handleMapClick,
+    handleViewportChange,
+    onCreated,
+    onDeleted,
+    setMapClickCallback,
+    setOnShapeCreatedCallback,
+    setOnShapeDeletedCallback,
+    handleResultMapInteraction
+  ]);
 
   return <MapContext.Provider value={value}>{children}</MapContext.Provider>;
 };

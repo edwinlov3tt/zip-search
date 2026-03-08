@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@runtimescope/sdk": "^0.7.1",
     "@supabase/supabase-js": "^2.57.4",
     "@turf/turf": "^7.2.0",
     "@upstash/ratelimit": "^2.0.5",
