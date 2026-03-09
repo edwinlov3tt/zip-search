@@ -106,6 +106,11 @@ const MapContainer = React.memo(({
       zoomControl={false}
       ref={mapRef}
       style={containerStyle}
+      scrollWheelZoom={true}
+      wheelDebounceTime={10}
+      wheelPxPerZoomLevel={60}
+      zoomSnap={0.5}
+      zoomDelta={1}
     >
       <TileLayer
         url={getTileLayer()}

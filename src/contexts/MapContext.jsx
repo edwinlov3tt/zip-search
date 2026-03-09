@@ -99,14 +99,18 @@ export const MapProvider = ({ children }) => {
       if (bounds) {
         mapRef.current.fitBounds(bounds, {
           animate: true,
-          padding: padding || 50
+          padding: padding || 50,
+          duration: 0.25
         });
       }
       return;
     }
 
-    // Set the map view directly with animation (don't update state to avoid conflicts)
-    mapRef.current.setView(center, zoom, { animate: true });
+    // Set the map view directly with animation
+    mapRef.current.setView(center, zoom, { 
+      animate: true,
+      duration: 0.25
+    });
 
     // Additional logic based on type (can be extended later for boundaries, etc.)
     switch (type) {

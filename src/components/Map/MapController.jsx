@@ -97,14 +97,23 @@ const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportCh
   // Track viewport changes for ZIP boundaries
   useEffect(() => {
     if (onViewportChange) {
+      let timeoutId = null;
+      
       const handleViewportChange = () => {
-        const bounds = map.getBounds();
-        onViewportChange({
-          north: bounds.getNorth(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          west: bounds.getWest()
-        });
+        // Debounce viewport changes to prevent rapid updates during zoom
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        timeoutId = setTimeout(() => {
+          const bounds = map.getBounds();
+          onViewportChange({
+            north: bounds.getNorth(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            west: bounds.getWest()
+          });
+        }, 100); // Wait 100ms after movement stops
       };
 
       map.on('moveend', handleViewportChange);
@@ -114,6 +123,9 @@ const MapController = ({ center, zoom, onMapClick, crosshairCursor, onViewportCh
       // This prevents infinite loops when the component re-renders
 
       return () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         map.off('moveend', handleViewportChange);
         map.off('zoomend', handleViewportChange);
       };
